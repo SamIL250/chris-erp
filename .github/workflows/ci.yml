@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Format check
+        run: npm run format:check
+
+      - name: Unit & integration tests
+        run: npm test
+        env:
+          VITEST: "true"
+
+      - name: Build
+        run: npm run build
+        env:
+          # Placeholder so build succeeds without secrets; real value comes from Vercel env.
+          NEXT_PUBLIC_CONVEX_URL: https://placeholder.convex.cloud

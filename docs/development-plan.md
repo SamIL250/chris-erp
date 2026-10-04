@@ -15,7 +15,7 @@
    - Mark it `- [x]` **only when the Definition of Done is met**.
    - Update the **Status Board** (§0) at the end of the session.
 2. **Task IDs are stable** (`PH0-01`, `PH1-04`…) — reference them in commits/messages ("PH1-04: variant SKU rules").
-3. **Phase gates are real.** A phase is ✅ only when its *Exit Criteria* block is fully checked. Don't start the next phase's core work while the current gate is red (parallel exceptions: docs, tests, bug fixes).
+3. **Phase gates are real.** A phase is ✅ only when its _Exit Criteria_ block is fully checked. Don't start the next phase's core work while the current gate is red (parallel exceptions: docs, tests, bug fixes).
 4. **Schema-first rule:** tables/fields needed by later phases get created in Phase 1 (serials, lots, warranty, service) — only UI/workflows wait.
 5. **Scope changes:** new ideas go to **§11 Backlog**, not into a running phase. We re-prioritize explicitly.
 
@@ -32,16 +32,16 @@
 
 ## 0. Status Board
 
-| Phase | Focus | Status | Tasks | Gate |
-|---|---|---|---|---|
-| **Phase 0** | Foundation (scaffold, auth, RBAC, settings, shell) | ⬜ Not started | 0 / 35 | ☐ |
-| **Phase 1** | Catalog + Inventory core (schema-first) | ⬜ Not started | 0 / 25 | ☐ |
-| **Phase 2** | Sales & Procurement (O2C + P2P documents) | ⬜ Not started | 0 / 29 | ☐ |
-| **Phase 3** | Finance (double-entry, postings, reports) | ⬜ Not started | 0 / 17 | ☐ |
-| **Phase 4** | Ecommerce storefront (B2C + B2B portal) | ⬜ Not started | 0 / 24 | ☐ |
-| **Phase 5** | Traceability & Service (serial/lot/FEFO, warranty) | ⬜ Not started | 0 / 17 | ☐ |
-| **Phase 6** | Depth, automation & hardening (go-live) | ⬜ Not started | 0 / 27 | ☐ |
-| **Continuous** | Tests, CI, docs, seed data | 🔨 Ongoing | 0 / 6 | — |
+| Phase          | Focus                                              | Status         | Tasks  | Gate |
+| -------------- | -------------------------------------------------- | -------------- | ------ | ---- |
+| **Phase 0**    | Foundation (scaffold, auth, RBAC, settings, shell) | ⬜ Not started | 0 / 35 | ☐    |
+| **Phase 1**    | Catalog + Inventory core (schema-first)            | ⬜ Not started | 0 / 25 | ☐    |
+| **Phase 2**    | Sales & Procurement (O2C + P2P documents)          | ⬜ Not started | 0 / 29 | ☐    |
+| **Phase 3**    | Finance (double-entry, postings, reports)          | ⬜ Not started | 0 / 17 | ☐    |
+| **Phase 4**    | Ecommerce storefront (B2C + B2B portal)            | ⬜ Not started | 0 / 24 | ☐    |
+| **Phase 5**    | Traceability & Service (serial/lot/FEFO, warranty) | ⬜ Not started | 0 / 17 | ☐    |
+| **Phase 6**    | Depth, automation & hardening (go-live)            | ⬜ Not started | 0 / 27 | ☐    |
+| **Continuous** | Tests, CI, docs, seed data                         | 🔨 Ongoing     | 0 / 6  | —    |
 
 **Total: 174 tasks + 26 phase-gate checks.**
 
@@ -88,6 +88,7 @@ chris-erp/
 
 **Goal:** A secure, beautiful, empty shell: login, roles, settings, audit — everything other features plug into.
 **Exit criteria:**
+
 - [ ] A new user can sign up, be assigned a role, log in, and sees only permitted nav/actions
 - [ ] Company profile, numbering sequences, base currency, tax rates configurable via UI
 - [ ] Audit log records every mutation performed in the app
@@ -158,6 +159,7 @@ chris-erp/
 
 **Goal:** Correct, auditable stock for multi-category products across warehouses — including the schema for serials/lots/expiry/warranty that later phases activate.
 **Exit criteria:**
+
 - [ ] Full product catalog maintainable (categories, attributes, variants, images)
 - [ ] Stock per warehouse provably correct under test (receipts, issues, transfers, adjustments)
 - [ ] `onHand` vs `available` (reserved) distinction working; low-stock alerts firing
@@ -181,7 +183,7 @@ chris-erp/
 - [ ] **PH1-11** Units of measure + conversions (each → box → case) with purchase/sales UoM
 - [ ] **PH1-12** Track flags + fields per product: `serialTracked`, `lotTracked`, `expiryRequired`, `warrantyEligible`, `warrantyMonths`, `shelfLifeDays`, `allowBackorder`
 - [ ] **PH1-13** Images via Convex storage (upload, reorder, cover image), alt text
-- [ ] **PH1-14** *(schema-first)* `serials`, `lots` tables + helpers skeleton: serial state machine (available/reserved/shipped/returned/service/disabled), lot master (supplier, receivedDate, mfgDate, expiryDate, status: released/quarantined/recalled/expired) — with unit tests only
+- [ ] **PH1-14** _(schema-first)_ `serials`, `lots` tables + helpers skeleton: serial state machine (available/reserved/shipped/returned/service/disabled), lot master (supplier, receivedDate, mfgDate, expiryDate, status: released/quarantined/recalled/expired) — with unit tests only
 - [ ] **PH1-15** Product duplicate + archive (archived hidden from all pickers/storefront)
 
 ### 1.3 Warehouses & stock ledger
@@ -203,6 +205,7 @@ chris-erp/
 
 **Goal:** The full document flows with correct stock effects. Financial postings are **prepared as journal intents** (table + hook), consumed in Phase 3.
 **Exit criteria:**
+
 - [ ] Manual O2C run end-to-end: Quote → SO → Delivery → Invoice (+ Return/Credit Note) with stock moving correctly
 - [ ] Manual P2P run end-to-end: Requisition → PO → Receipt → Bill (+ Payment intent), with 2/3-way match visibility
 - [ ] Pricing engine resolves list/group/contract/volume prices identically for staff and (future) storefront
@@ -238,9 +241,9 @@ chris-erp/
 
 ### 2.4 Procurement documents (Procure-to-Pay)
 
-- [ ] **PH2-20** `requisitions` (internal): lines, need-by date, requester, status (draft/approved/rejected) → convert to PO *(simple threshold: role-gated approve; rules engine Phase 6)*
+- [ ] **PH2-20** `requisitions` (internal): lines, need-by date, requester, status (draft/approved/rejected) → convert to PO _(simple threshold: role-gated approve; rules engine Phase 6)_
 - [ ] **PH2-21** `purchaseOrders`: lines, agreed price, tax, expected date, status draft → sent → partiallyReceived → received → billed; PDF; send action (print/PDF now; email when Phase 4 wires Resend)
-- [ ] **PH2-22** `goodsReceipts` against PO: partial receipts, qty accepted/rejected, auto stock receipt movement + unit cost → moving-average update hook; *(capture serials/lots — fields exist, dedicated UI Phase 5)*
+- [ ] **PH2-22** `goodsReceipts` against PO: partial receipts, qty accepted/rejected, auto stock receipt movement + unit cost → moving-average update hook; _(capture serials/lots — fields exist, dedicated UI Phase 5)_
 - [ ] **PH2-23** `vendorBills`: record from PO (pre-filled, **2/3-way match view**: ordered vs received vs billed with tolerance warnings) or standalone; status open → matched → paid (payment Phase 3); journal intent `vendorBill`
 - [ ] **PH2-24** Purchase returns to vendor: link receipt lines → stock out movement → debit note reference
 - [ ] **PH2-25** Procurement dashboard: open POs, overdue deliveries, receipts pending, bills pending match
@@ -258,6 +261,7 @@ chris-erp/
 
 **Goal:** The ledger that makes everything real: automatic postings, AR/AP, reports an accountant trusts.
 **Exit criteria:**
+
 - [ ] Automated scenario test: run O2C + P2P → **trial balance balances**, P&L/Balance Sheet/Cash Flow generate
 - [ ] Period close locks entries; posted docs immutable (reversal only)
 - [ ] AR/AP aging + statements correct; payments applied; tax report by period
@@ -275,7 +279,7 @@ chris-erp/
 ### 3.2 Receivables & payables
 
 - [ ] **PH3-07** Customer payments: record (full/partial/unapplied cash), apply to invoices, over/under payment handling, receipts PDF/print, journal posting
-- [ ] **PH3-08** AR views: open invoices, aging (30/60/90+), customer statement, overdue list; *(dunning emails → Phase 6)*
+- [ ] **PH3-08** AR views: open invoices, aging (30/60/90+), customer statement, overdue list; _(dunning emails → Phase 6)_
 - [ ] **PH3-09** Vendor payments: pay bills (full/partial), payment runs, AP aging, vendor statement view
 - [ ] **PH3-10** Deposits/down-payments on sales orders (receive deposit → apply to final invoice)
 - [ ] **PH3-11** Bank/cash accounts: create accounts, record transfers, **basic bank reconciliation** (import statement lines manually/CSV → match to entries → reconcile)
@@ -298,6 +302,7 @@ chris-erp/
 
 **Goal:** A fast, SEO-friendly store sharing the same database: guest checkout at list price, B2B accounts at contract price.
 **Exit criteria:**
+
 - [ ] Test-mode Stripe payment succeeds end-to-end; stock + reservation update live; ERP sees the order instantly
 - [ ] B2B user sees contract prices, can submit PO-number orders and RFQs
 - [ ] SEO checks pass (meta, sitemap, structured data); transactional emails arrive
@@ -344,6 +349,7 @@ chris-erp/
 
 **Goal:** Activate the compliance schema: unit-level histories, FEFO with hard blocks, recalls in minutes, warranty & repair operations.
 **Exit criteria:**
+
 - [ ] Recall drill: pick a lot → full forward/backward trace + customer list exported in minutes
 - [ ] Expired/quarantined lot provably cannot be sold (test proves block)
 - [ ] Serial → warranty status lookup works for customers and staff
@@ -387,6 +393,7 @@ chris-erp/
 
 **Goal:** The polish that makes it production-grade: configurable approvals, deeper reports/automation, performance, security, ops.
 **Exit criteria:**
+
 - [ ] Approval rules configurable and enforced; reports dashboards populated
 - [ ] Performance + security review passed; observability live; backups tested
 - [ ] E2E smoke covers O2C, P2P, checkout; operator docs published; go-live checklist signed
@@ -463,7 +470,7 @@ Phase 6 needs Phases 1–5 features to polish; runs last.
 
 ## 11. Backlog / Icebox (explicitly not in phases)
 
-*Move into a phase only via explicit re-prioritization.*
+_Move into a phase only via explicit re-prioritization._
 
 - Multi-company / multi-tenant consolidation · POS terminals · EDI & punchout (Ariba/Coupa)
 - Full QMS (CAPA, 21 CFR Part 11 e-signatures) · cold-chain IoT sensor capture
@@ -476,6 +483,6 @@ Phase 6 needs Phases 1–5 features to polish; runs last.
 
 ## 12. Session log
 
-| Date | Session | Shipped (task IDs) | Decisions / notes | Next up |
-|---|---|---|---|---|
-| 2026-10-04 | Plan created | — | Research doc + development plan aligned with scoping decisions | Start Phase 0 (PH0-01…) |
+| Date       | Session      | Shipped (task IDs) | Decisions / notes                                              | Next up                 |
+| ---------- | ------------ | ------------------ | -------------------------------------------------------------- | ----------------------- |
+| 2026-10-04 | Plan created | —                  | Research doc + development plan aligned with scoping decisions | Start Phase 0 (PH0-01…) |
