@@ -1,0 +1,6 @@
+# Generated — rewritten by `npx convex dev` / codegen; never format.
+convex/_generated/
+
+.next/
+node_modules/
+package-lock.json
