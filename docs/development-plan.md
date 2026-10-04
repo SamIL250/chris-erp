@@ -111,8 +111,8 @@ chris-erp/
 ### 0.2 Design system (Untitled UI)
 
 - [x] **PH0-07** Install Untitled UI React via CLI + `@untitledui/icons`; Tailwind theme tokens (colors, radius, typography), light/dark CSS variables ready
-- [ ] **PH0-08** Wrap primitives in `components/ui/`: Button, Input, Textarea, Select/Combobox, Checkbox, Radio, Switch, DatePicker, Table, Modal, Drawer, Tabs, Toast, Badge, Avatar, Card, Skeleton, EmptyState, PageHeader, Breadcrumb, Pagination, Tooltip, Dropdown
-- [ ] **PH0-09** Form pattern: react-hook-form + zod resolver over Untitled UI fields (single `FormInput`, `FormSelect`, `FormError` wrappers)
+- [x] **PH0-08** Wrap primitives in `components/ui/`: Button, Input, Textarea, Select/Combobox, Checkbox, Radio, Switch, DatePicker, Table, Modal, Drawer, Tabs, Toast, Badge, Avatar, Card, Skeleton, EmptyState, PageHeader, Breadcrumb, Pagination, Tooltip, Dropdown
+- [x] **PH0-09** Form pattern: react-hook-form + zod resolver over Untitled UI fields (single `FormInput`, `FormSelect`, `FormError` wrappers)
 - [ ] **PH0-10** Data table pattern: Convex `paginationV2` + sort/filter/column-visibility, Untitled UI table skin, row click → drawer/detail
 - [ ] **PH0-11** Chart containers (recharts or similar) styled per Untitled UI chart look: line, bar, donut, KPI stat tile
 
