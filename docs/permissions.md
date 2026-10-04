@@ -6,32 +6,32 @@ the UI via the `useCan()` hook — the UI never decides, it only mirrors.
 
 ## Roles
 
-| Role | Intent |
-|---|---|
-| **Owner** | Everything, including dangerous ops (period close, role changes, delete). |
-| **Admin** | Everything except ownership transfer / factory resets. |
-| **Sales** | Customers, quotes, sales orders, their own documents. No finance close. |
-| **Warehouse** | Stock, receiving, transfers, picking, counting. Read-only catalog. |
-| **Accountant** | Full finance module, read-only on sales/procurement/stock. |
-| **Storefront** | Not a staff role — marks a *customer* identity (portal access only). |
+| Role           | Intent                                                                    |
+| -------------- | ------------------------------------------------------------------------- |
+| **Owner**      | Everything, including dangerous ops (period close, role changes, delete). |
+| **Admin**      | Everything except ownership transfer / factory resets.                    |
+| **Sales**      | Customers, quotes, sales orders, their own documents. No finance close.   |
+| **Warehouse**  | Stock, receiving, transfers, picking, counting. Read-only catalog.        |
+| **Accountant** | Full finance module, read-only on sales/procurement/stock.                |
+| **Storefront** | Not a staff role — marks a _customer_ identity (portal access only).      |
 
 ## Modules × actions
 
 Actions: `view` · `create` · `edit` · `delete` · `approve` · `post` (irreversible,
 e.g. journal/period close) · `export`
 
-| Module | Owner | Admin | Sales | Warehouse | Accountant |
-|---|---|---|---|---|---|
-| **settings** (company, tax, currency, numbering) | CRUD + post | CRU + post | — | — | view |
-| **users** & roles | CRUD | CRU | — | — | — |
-| **catalog** (products, categories) | full | full | view, create, edit | view | view |
-| **inventory** (stock, transfers, adjustments) | full | full | view | full + approve adjustments | view |
-| **sales** (customers, quotes, orders, returns) | full | full | full + approve | view, edit fulfillment | view |
-| **procurement** (vendors, POs, bills) | full | full | view | view, receive | view, edit bills |
-| **finance** (journal, AR/AP, reports, periods) | full + post/close | full + post | view (own customer stmts) | — | full + post (no close) |
-| **service** (RMA, warranty, jobs) | full | full | full | view, edit jobs | view |
-| **storefront** (orders, content, promos) | full | full | view orders | — | view orders |
-| **reports** & dashboards | full | full | sales reports | inventory reports | all financial |
+| Module                                           | Owner             | Admin       | Sales                     | Warehouse                  | Accountant             |
+| ------------------------------------------------ | ----------------- | ----------- | ------------------------- | -------------------------- | ---------------------- |
+| **settings** (company, tax, currency, numbering) | CRUD + post       | CRU + post  | —                         | —                          | view                   |
+| **users** & roles                                | CRUD              | CRU         | —                         | —                          | —                      |
+| **catalog** (products, categories)               | full              | full        | view, create, edit        | view                       | view                   |
+| **inventory** (stock, transfers, adjustments)    | full              | full        | view                      | full + approve adjustments | view                   |
+| **sales** (customers, quotes, orders, returns)   | full              | full        | full + approve            | view, edit fulfillment     | view                   |
+| **procurement** (vendors, POs, bills)            | full              | full        | view                      | view, receive              | view, edit bills       |
+| **finance** (journal, AR/AP, reports, periods)   | full + post/close | full + post | view (own customer stmts) | —                          | full + post (no close) |
+| **service** (RMA, warranty, jobs)                | full              | full        | full                      | view, edit jobs            | view                   |
+| **storefront** (orders, content, promos)         | full              | full        | view orders               | —                          | view orders            |
+| **reports** & dashboards                         | full              | full        | sales reports             | inventory reports          | all financial          |
 
 ## Rules
 

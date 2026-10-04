@@ -33,7 +33,10 @@ describe("convex-test harness", () => {
 
     // Index lookup works (by_email)
     const found = await t.run(async (ctx) =>
-      ctx.db.query("users").withIndex("by_email", (q) => q.eq("email", "owner@example.com")).unique(),
+      ctx.db
+        .query("users")
+        .withIndex("by_email", (q) => q.eq("email", "owner@example.com"))
+        .unique(),
     );
     expect(found?._id).toBe(user);
   });

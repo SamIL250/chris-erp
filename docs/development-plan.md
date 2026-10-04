@@ -67,10 +67,15 @@ chris-erp/
 │   ├── crons.ts            # scheduled jobs
 │   └── _lib/               # auth, permissions, audit, sequences, posting intents
 ├── components/
-│   ├── ui/                 # Untitled UI primitives (copied source, wrapped once)
-│   └── <feature>/          # feature-specific components
-├── lib/                    # shared utils, zod schemas, formatting, pricing client helpers
-└── tests/                  # vitest + convex-test
+│   ├── base/               # Untitled UI source (added via CLI — kept pristine for upgrades)
+│   ├── application/        # Untitled UI application components (table, modal, nav, date-picker…)
+│   ├── ui/                 # OUR wrappers built over base/application (forms, data table, feedback)
+│   └── shared/             # cross-feature components (doc-flow, search…)
+├── styles/                 # Untitled UI theme.css + typography + globals (added via CLI)
+├── utils/                  # CLI-provided helpers (cx, …)
+├── lib/                    # shared utils, status unions, formatting, pricing client helpers
+├── tests/                  # vitest + convex-test
+└── docs/                   # research, development plan, permissions matrix
 ```
 
 **Rules**
@@ -96,16 +101,16 @@ chris-erp/
 
 ### 0.1 Scaffold & tooling
 
-- [ ] **PH0-01** Init Next.js (App Router, TypeScript strict, Tailwind v4), ESLint + Prettier, `.env.example`
-- [ ] **PH0-02** Init Convex project; dev + prod deployments; env wiring to Next.js
-- [ ] **PH0-03** Folder structure per §1 created with placeholder files
-- [ ] **PH0-04** Vitest + `convex-test` harness wired; first passing test
-- [ ] **PH0-05** CI pipeline (GitHub Actions): typecheck, lint, unit tests on push
-- [ ] **PH0-06** README: local setup, scripts, deployment links
+- [x] **PH0-01** Init Next.js (App Router, TypeScript strict, Tailwind v4), ESLint + Prettier, `.env.example`
+- [x] **PH0-02** Init Convex project; dev + prod deployments; env wiring to Next.js
+- [x] **PH0-03** Folder structure per §1 created with placeholder files
+- [x] **PH0-04** Vitest + `convex-test` harness wired; first passing test
+- [x] **PH0-05** CI pipeline (GitHub Actions): typecheck, lint, unit tests on push
+- [x] **PH0-06** README: local setup, scripts, deployment links
 
 ### 0.2 Design system (Untitled UI)
 
-- [ ] **PH0-07** Install Untitled UI React via CLI + `@untitledui/icons`; Tailwind theme tokens (colors, radius, typography), light/dark CSS variables ready
+- [x] **PH0-07** Install Untitled UI React via CLI + `@untitledui/icons`; Tailwind theme tokens (colors, radius, typography), light/dark CSS variables ready
 - [ ] **PH0-08** Wrap primitives in `components/ui/`: Button, Input, Textarea, Select/Combobox, Checkbox, Radio, Switch, DatePicker, Table, Modal, Drawer, Tabs, Toast, Badge, Avatar, Card, Skeleton, EmptyState, PageHeader, Breadcrumb, Pagination, Tooltip, Dropdown
 - [ ] **PH0-09** Form pattern: react-hook-form + zod resolver over Untitled UI fields (single `FormInput`, `FormSelect`, `FormError` wrappers)
 - [ ] **PH0-10** Data table pattern: Convex `paginationV2` + sort/filter/column-visibility, Untitled UI table skin, row click → drawer/detail
@@ -128,7 +133,7 @@ chris-erp/
 
 ### 0.5 RBAC
 
-- [ ] **PH0-21** Permission matrix spec (doc in repo): modules × actions (view/create/edit/delete/approve/post) for roles: **Owner, Admin, Sales, Warehouse, Accountant, Storefront (customer)**
+- [x] **PH0-21** Permission matrix spec (doc in repo): modules × actions (view/create/edit/delete/approve/post) for roles: **Owner, Admin, Sales, Warehouse, Accountant, Storefront (customer)**
 - [ ] **PH0-22** `roles` + `userRoles` tables; `requirePermission(module, action)` helper used by every mutation; permission tests (denied access proves 403-equivalent error)
 - [ ] **PH0-23** UI gating: nav items, buttons, route access derived from permissions (single `useCan()` hook)
 

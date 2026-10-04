@@ -8,11 +8,11 @@ Stripe · Resend · Vitest/convex-test
 
 ## Documentation
 
-| Doc | Purpose |
-|---|---|
+| Doc                                                                      | Purpose                                                                         |
+| ------------------------------------------------------------------------ | ------------------------------------------------------------------------------- |
 | [`docs/erp-research-and-features.md`](docs/erp-research-and-features.md) | Research on existing ERPs, architecture decisions, full feature list (P0/P1/P2) |
-| [`docs/development-plan.md`](docs/development-plan.md) | **Build progress** — phases, task checkboxes, status board |
-| [`docs/permissions.md`](docs/permissions.md) | RBAC permission matrix (roles × modules × actions) |
+| [`docs/development-plan.md`](docs/development-plan.md)                   | **Build progress** — phases, task checkboxes, status board                      |
+| [`docs/permissions.md`](docs/permissions.md)                             | RBAC permission matrix (roles × modules × actions)                              |
 
 ## Getting started
 
@@ -34,16 +34,16 @@ Open http://localhost:3000.
 
 ## Scripts
 
-| Script | Purpose |
-|---|---|
-| `npm run dev` | Next.js dev server (Turbopack) |
-| `npm run build` | Production build |
-| `npm run lint` | ESLint (flat config, Prettier-compatible) |
-| `npm run typecheck` | `tsc --noEmit` (TypeScript strict) |
-| `npm run format` / `format:check` | Prettier write / check |
-| `npm test` / `npm run test:watch` | Vitest + convex-test |
-| `npm run convex:dev` | Convex dev deployment watcher |
-| `npm run convex:deploy` | Convex production deploy |
+| Script                            | Purpose                                   |
+| --------------------------------- | ----------------------------------------- |
+| `npm run dev`                     | Next.js dev server (Turbopack)            |
+| `npm run build`                   | Production build                          |
+| `npm run lint`                    | ESLint (flat config, Prettier-compatible) |
+| `npm run typecheck`               | `tsc --noEmit` (TypeScript strict)        |
+| `npm run format` / `format:check` | Prettier write / check                    |
+| `npm test` / `npm run test:watch` | Vitest + convex-test                      |
+| `npm run convex:dev`              | Convex dev deployment watcher             |
+| `npm run convex:deploy`           | Convex production deploy                  |
 
 ## Structure
 
