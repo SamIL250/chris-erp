@@ -3,6 +3,7 @@
 > **Project:** Multi-category product business ERP (IT equipment → pharmaceutical equipment) with an integrated ecommerce store.
 > **Stack:** Next.js (App Router) · Convex (backend/db) · Untitled UI (design system, components, icons)
 > **Status:** Research complete — feature list aligned, ready for development.
+> **Next:** Build progress is tracked in [`development-plan.md`](./development-plan.md) (phases, tasks, checkboxes).
 > **Date:** 2026-10-04
 
 ---
