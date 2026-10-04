@@ -31,11 +31,11 @@ describe("convex-test harness", () => {
     expect(org?.name).toBe("Chris Trading Ltd");
     expect(profile?.status).toBe("active");
 
-    // Index lookup works (by_email)
+    // Index lookup works (`email` — required name for @convex-dev/auth)
     const found = await t.run(async (ctx) =>
       ctx.db
         .query("users")
-        .withIndex("by_email", (q) => q.eq("email", "owner@example.com"))
+        .withIndex("email", (q) => q.eq("email", "owner@example.com"))
         .unique(),
     );
     expect(found?._id).toBe(user);

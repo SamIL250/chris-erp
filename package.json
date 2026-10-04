@@ -16,6 +16,8 @@
     "convex:deploy": "convex deploy"
   },
   "dependencies": {
+    "@auth/core": "^0.41.1",
+    "@convex-dev/auth": "^0.0.96",
     "@hookform/resolvers": "^5.9.1",
     "@internationalized/date": "^3.12.4",
     "@react-stately/utils": "^3.12.1",

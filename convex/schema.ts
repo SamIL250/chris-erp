@@ -1,3 +1,4 @@
+import { authTables } from "@convex-dev/auth/server";
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 
@@ -9,8 +10,14 @@ import { v } from "convex/values";
  * - plural camelCase table names, camelCase fields
  * - index everything you filter by: `by_…`
  * - money: integer minor units + currency field
+ *
+ * `authTables` (Convex Auth) must be spread in; `users` below extends the auth
+ * user with app fields — its `email`/`phone` index names are required by the
+ * library (it queries `withIndex("email" | "phone")`).
  */
 export default defineSchema({
+  ...authTables,
+
   /** Single-company config holder (one document, id kept in settings). */
   organizations: defineTable({
     name: v.string(),
@@ -39,12 +46,20 @@ export default defineSchema({
     updatedAt: v.number(),
   }).index("by_active", ["active"]),
 
-  /** App user profiles — linked to Convex Auth accounts in PH0-17. */
+  /**
+   * App user profiles — the auth library owns the auth fields (name/email/…)
+   * and creates documents here via the `profile()` callback in convex/auth.ts.
+   */
   users: defineTable({
+    // ── Convex Auth fields (parity with authTables.users) ──
     name: v.optional(v.string()),
     email: v.optional(v.string()),
     emailVerificationTime: v.optional(v.number()),
+    phone: v.optional(v.string()),
+    phoneVerificationTime: v.optional(v.number()),
     image: v.optional(v.string()),
+    isAnonymous: v.optional(v.boolean()),
+    // ── App fields ──
     status: v.union(v.literal("active"), v.literal("invited"), v.literal("disabled")),
     invitedBy: v.optional(v.id("users")),
     invitedAt: v.optional(v.number()),
@@ -52,6 +67,7 @@ export default defineSchema({
     createdAt: v.number(),
     updatedAt: v.number(),
   })
-    .index("by_email", ["email"])
+    .index("email", ["email"]) // required by @convex-dev/auth (exact name)
+    .index("phone", ["phone"]) // required by @convex-dev/auth (exact name)
     .index("by_status", ["status"]),
 });
