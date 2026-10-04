@@ -32,16 +32,16 @@
 
 ## 0. Status Board
 
-| Phase          | Focus                                              | Status         | Tasks  | Gate |
-| -------------- | -------------------------------------------------- | -------------- | ------ | ---- |
-| **Phase 0**    | Foundation (scaffold, auth, RBAC, settings, shell) | ⬜ Not started | 0 / 35 | ☐    |
-| **Phase 1**    | Catalog + Inventory core (schema-first)            | ⬜ Not started | 0 / 25 | ☐    |
-| **Phase 2**    | Sales & Procurement (O2C + P2P documents)          | ⬜ Not started | 0 / 29 | ☐    |
-| **Phase 3**    | Finance (double-entry, postings, reports)          | ⬜ Not started | 0 / 17 | ☐    |
-| **Phase 4**    | Ecommerce storefront (B2C + B2B portal)            | ⬜ Not started | 0 / 24 | ☐    |
-| **Phase 5**    | Traceability & Service (serial/lot/FEFO, warranty) | ⬜ Not started | 0 / 17 | ☐    |
-| **Phase 6**    | Depth, automation & hardening (go-live)            | ⬜ Not started | 0 / 27 | ☐    |
-| **Continuous** | Tests, CI, docs, seed data                         | 🔨 Ongoing     | 0 / 6  | —    |
+| Phase          | Focus                                              | Status         | Tasks   | Gate |
+| -------------- | -------------------------------------------------- | -------------- | ------- | ---- |
+| **Phase 0**    | Foundation (scaffold, auth, RBAC, settings, shell) | 🔨 In progress | 12 / 35 | ☐    |
+| **Phase 1**    | Catalog + Inventory core (schema-first)            | ⬜ Not started | 0 / 25  | ☐    |
+| **Phase 2**    | Sales & Procurement (O2C + P2P documents)          | ⬜ Not started | 0 / 29  | ☐    |
+| **Phase 3**    | Finance (double-entry, postings, reports)          | ⬜ Not started | 0 / 17  | ☐    |
+| **Phase 4**    | Ecommerce storefront (B2C + B2B portal)            | ⬜ Not started | 0 / 24  | ☐    |
+| **Phase 5**    | Traceability & Service (serial/lot/FEFO, warranty) | ⬜ Not started | 0 / 17  | ☐    |
+| **Phase 6**    | Depth, automation & hardening (go-live)            | ⬜ Not started | 0 / 27  | ☐    |
+| **Continuous** | Tests, CI, docs, seed data                         | 🔨 Ongoing     | 0 / 6   | —    |
 
 **Total: 174 tasks + 26 phase-gate checks.**
 
@@ -113,8 +113,8 @@ chris-erp/
 - [x] **PH0-07** Install Untitled UI React via CLI + `@untitledui/icons`; Tailwind theme tokens (colors, radius, typography), light/dark CSS variables ready
 - [x] **PH0-08** Wrap primitives in `components/ui/`: Button, Input, Textarea, Select/Combobox, Checkbox, Radio, Switch, DatePicker, Table, Modal, Drawer, Tabs, Toast, Badge, Avatar, Card, Skeleton, EmptyState, PageHeader, Breadcrumb, Pagination, Tooltip, Dropdown
 - [x] **PH0-09** Form pattern: react-hook-form + zod resolver over Untitled UI fields (single `FormInput`, `FormSelect`, `FormError` wrappers)
-- [ ] **PH0-10** Data table pattern: Convex `paginationV2` + sort/filter/column-visibility, Untitled UI table skin, row click → drawer/detail
-- [ ] **PH0-11** Chart containers (recharts or similar) styled per Untitled UI chart look: line, bar, donut, KPI stat tile
+- [x] **PH0-10** Data table pattern: Convex `paginationV2` + sort/filter/column-visibility, Untitled UI table skin, row click → drawer/detail
+- [x] **PH0-11** Chart containers (recharts or similar) styled per Untitled UI chart look: line, bar, donut, KPI stat tile
 
 ### 0.3 App shell & navigation
 
