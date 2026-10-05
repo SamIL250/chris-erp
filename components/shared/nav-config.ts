@@ -30,7 +30,11 @@ export const NAV_ITEMS: (NavItemType | NavItemDividerType)[] = [
   { label: "Service", href: "/service", icon: Tool01 },
   { label: "Reports", href: "/reports", icon: PresentationChart01 },
   { divider: true },
-  { label: "Settings", href: "/settings", icon: Settings01 },
+  {
+    label: "Settings",
+    icon: Settings01,
+    items: [{ label: "Profile", href: "/settings/profile" }],
+  },
 ];
 
 /**

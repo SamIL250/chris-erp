@@ -34,7 +34,7 @@
 
 | Phase          | Focus                                              | Status         | Tasks   | Gate |
 | -------------- | -------------------------------------------------- | -------------- | ------- | ---- |
-| **Phase 0**    | Foundation (scaffold, auth, RBAC, settings, shell) | 🔨 In progress | 18 / 35 | ☐    |
+| **Phase 0**    | Foundation (scaffold, auth, RBAC, settings, shell) | 🔨 In progress | 19 / 35 | ☐    |
 | **Phase 1**    | Catalog + Inventory core (schema-first)            | ⬜ Not started | 0 / 25  | ☐    |
 | **Phase 2**    | Sales & Procurement (O2C + P2P documents)          | ⬜ Not started | 0 / 29  | ☐    |
 | **Phase 3**    | Finance (double-entry, postings, reports)          | ⬜ Not started | 0 / 17  | ☐    |
@@ -127,7 +127,7 @@ chris-erp/
 ### 0.4 Auth & user management
 
 - [x] **PH0-17** Convex Auth: email/password + Google OAuth; login, signup, logout, forgot/reset password pages (Untitled UI)
-- [ ] **PH0-18** `users` profile table (name, avatar, role, status active/invited/disabled), profile settings page
+- [x] **PH0-18** `users` profile table (name, avatar, role, status active/invited/disabled), profile settings page (role display lands with RBAC in PH0-22; avatar upload with file storage in PH0-27)
 - [ ] **PH0-19** Admin: invite user by email → invitee sets password → lands with assigned role
 - [ ] **PH0-20** Session handling, auth rate limiting, security headers
 
