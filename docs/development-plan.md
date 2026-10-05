@@ -2,8 +2,8 @@
 
 > **Companion to:** [`erp-research-and-features.md`](./erp-research-and-features.md) (research, decisions, feature priorities)
 > **Stack:** Next.js (App Router) · Convex · Untitled UI (components + icons) · Stripe · Resend · Tailwind v4
-> **Status:** Ready to start — Phase 0
-> **Last updated:** 2026-10-04
+> **Status:** Phase 0 ✅ complete — ready for Phase 1 (Catalog & Inventory)
+> **Last updated:** 2026-10-05
 
 ---
 
@@ -41,7 +41,7 @@
 | **Phase 4**    | Ecommerce storefront (B2C + B2B portal)            | ⬜ Not started | 0 / 24  | ☐    |
 | **Phase 5**    | Traceability & Service (serial/lot/FEFO, warranty) | ⬜ Not started | 0 / 17  | ☐    |
 | **Phase 6**    | Depth, automation & hardening (go-live)            | ⬜ Not started | 0 / 27  | ☐    |
-| **Continuous** | Tests, CI, docs, seed data                         | 🔨 Ongoing     | 0 / 6   | —    |
+| **Continuous** | Tests, CI, docs, seed data                         | 🔨 Ongoing     | 1 / 6   | —    |
 
 **Total: 174 tasks + 26 phase-gate checks.**
 
@@ -454,7 +454,7 @@ chris-erp/
 - [ ] **CT-03** Demo seed data extended as new modules land (always runnable demo)
 - [ ] **CT-04** Design QA pass vs Untitled UI (spacing/typography/dark mode spot checks)
 - [ ] **CT-05** Research doc cross-check: no P0 feature left unassigned to a phase
-- [ ] **CT-06** Session log: brief entry (what shipped, decisions, next up) appended to §12
+- [x] **CT-06** Session log: brief entry (what shipped, decisions, next up) appended to §12
 
 ---
 
@@ -487,6 +487,35 @@ _Move into a phase only via explicit re-prioritization._
 ---
 
 ## 12. Session log
+
+### 2026-10-05 · Phase 0 finish line (PH0-25 → PH0-35)
+
+**Shipped**
+
+- Numbering sequences (11 canonical docs, `formatSequence`/`nextSequence`),
+  audit trail (`auditedMutation` + viewer), file storage with avatars,
+  notification bell, company settings, document-numbering UI, currency
+  settings, tax engine config (rates/groups/category explainer),
+  locale+timezone formatting prefs, idempotent demo seed (`npm run seed`),
+  and the PH0-35 mutation sweep. **Phase 0: 35/35, gate ☑.**
+- Suite grew to 92 tests (17 files); CI green (typecheck/lint/format/test/build).
+
+**Decisions**
+
+- Audit `redact()` masks bare `code` keys — payload keys were renamed
+  (`currency`, `label`) rather than weakening the redactor.
+- Exactly one default tax group: promoting one demotes the others in the same
+  transaction, and the demoted ids ride inside the audit payload.
+- Formatting prefs = one global `settings` row (key `formatting`),
+  session-gated read like `organization:get`; the locale drives numbers too.
+- Seed is Owner-only and strictly additive (never overwrites your org/
+  currencies/roles); invite URLs appear only in the mutation result — never
+  in the audit trail. `inviteUser` extracted to `_lib/invites.ts` (shared
+  with `invites.create`).
+- Sweep conventions: a local `require*` identity helper counts as a gate;
+  audit exemptions are a reasoned allowlist that also fails when stale.
+
+**Next up:** Phase 1 — Catalog & Inventory core (schema-first), PH1-01.
 
 | Date       | Session      | Shipped (task IDs) | Decisions / notes                                              | Next up                 |
 | ---------- | ------------ | ------------------ | -------------------------------------------------------------- | ----------------------- |
