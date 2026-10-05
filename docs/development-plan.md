@@ -34,7 +34,7 @@
 
 | Phase          | Focus                                              | Status         | Tasks   | Gate |
 | -------------- | -------------------------------------------------- | -------------- | ------- | ---- |
-| **Phase 0**    | Foundation (scaffold, auth, RBAC, settings, shell) | 🔨 In progress | 23 / 35 | ☐    |
+| **Phase 0**    | Foundation (scaffold, auth, RBAC, settings, shell) | 🔨 In progress | 24 / 35 | ☐    |
 | **Phase 1**    | Catalog + Inventory core (schema-first)            | ⬜ Not started | 0 / 25  | ☐    |
 | **Phase 2**    | Sales & Procurement (O2C + P2P documents)          | ⬜ Not started | 0 / 29  | ☐    |
 | **Phase 3**    | Finance (double-entry, postings, reports)          | ⬜ Not started | 0 / 17  | ☐    |
@@ -139,7 +139,7 @@ chris-erp/
 
 ### 0.6 Platform tables & core helpers
 
-- [ ] **PH0-24** `schema.ts` foundations: `organizations` (single-company config), `users`, `roles`, `settings`, `sequences`, `currencies`, `exchangeRates`, `taxRates`, `taxGroups`, `auditLog`, `notifications`, `files`
+- [x] **PH0-24** `schema.ts` foundations: `organizations` (single-company config), `users`, `roles`, `settings`, `sequences`, `currencies`, `exchangeRates`, `taxRates`, `taxGroups`, `auditLog`, `notifications`, `files` _(organizations/users/roles had landed in PH0-18/22; added settings, sequences, currencies, exchangeRates, taxRates, taxGroups, auditLog, notifications, files with indexes + design comments; sanity suite tests/platform-tables.test.ts writes/queries every one)_
 - [ ] **PH0-25** `nextSequence(name)` document-number generator (INV-, SO-, PO-, QT-, DN-, CR-, JRNL-…)
 - [ ] **PH0-26** `audit()` helper: append-only before/after snapshots, wired into a generic mutation wrapper; **audit log viewer UI** (filter by actor/entity/date)
 - [ ] **PH0-27** File storage: Convex storage upload, signed URLs, image upload component (used later by catalog)
