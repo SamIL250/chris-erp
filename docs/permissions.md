@@ -80,8 +80,10 @@ _When adding a module: add a row here first, then the permission constant, then 
   Self-service by design,
   no RBAC: `users.updateProfile`, `users.setAvatar`, `files.*`
   (uploader-or-settings.edit on remove), `notifications.*` (own rows).
-  New mutations call `requirePermission` from day one; PH0-35 verifies the
-  sweep.
+  New mutations call `requirePermission` from day one;
+  `tests/guards.test.ts` (PH0-35) sweeps every exported mutation in CI —
+  no identity/permission gate or an unaudited table write (outside the
+  reasoned allowlist) fails the build.
 - **Audit entries (rule 2)**: `auditedMutation()` in `convex/_lib/audit.ts`
   appends the before/after snapshot after the handler succeeds (snapshots are
   redacted; a thrown handler records nothing); `appendAudit()` covers
