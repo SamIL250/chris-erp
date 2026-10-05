@@ -6,12 +6,22 @@ import type {
 } from "convex/server";
 import { ConvexError, type GenericId as Id } from "convex/values";
 import type schema from "../schema";
+// The matrix itself lives in `lib/permissions.ts` (pure, shared with the
+// client-side `useCan()` hook); re-exported here so Convex code has a single
+// import site.
+import {
+  hasPermission,
+  type Action,
+  type Module,
+  type RoleKey,
+  SYSTEM_ROLES,
+} from "../../lib/permissions";
+
+export * from "../../lib/permissions";
 
 /**
- * RBAC core (PH0-22). The matrix below is a transcription of
- * `docs/permissions.md` — that doc stays the human-readable source of truth;
- * this file is its executable form. Deny by default: an unknown
- * module/action/role combination is denied.
+ * RBAC core (PH0-22): context-bound enforcement around the shared matrix
+ * (see `lib/permissions.ts` → `docs/permissions.md`).
  *
  * Enforcement contract (docs/permissions.md rule 2): every state-changing
  * mutation calls `requirePermission(ctx, module, action)` FIRST (self-scoped
@@ -23,101 +33,6 @@ type DataModel = DataModelFromSchemaDefinition<typeof schema>;
 /** Context accepted by read paths (queries + mutations). */
 export type AppCtx = GenericQueryCtx<DataModel> | GenericMutationCtx<DataModel>;
 type MutationCtx = GenericMutationCtx<DataModel>;
-
-export const ROLE_KEYS = ["owner", "admin", "sales", "warehouse", "accountant"] as const;
-export type RoleKey = (typeof ROLE_KEYS)[number];
-
-/** Labels/descriptions for the assignable roles (Storefront is not staff). */
-export const SYSTEM_ROLES: { key: RoleKey; name: string; description: string }[] = [
-  { key: "owner", name: "Owner", description: "Everything, including dangerous operations." },
-  { key: "admin", name: "Admin", description: "Everything except ownership transfer / resets." },
-  { key: "sales", name: "Sales", description: "Customers, quotes, orders. No finance close." },
-  { key: "warehouse", name: "Warehouse", description: "Stock, receiving, transfers, counting." },
-  { key: "accountant", name: "Accountant", description: "Full finance; read-only elsewhere." },
-];
-
-export const MODULES = [
-  "settings",
-  "users",
-  "catalog",
-  "inventory",
-  "sales",
-  "procurement",
-  "finance",
-  "service",
-  "storefront",
-  "reports",
-] as const;
-export type Module = (typeof MODULES)[number];
-
-export const ACTIONS = ["view", "create", "edit", "delete", "approve", "post", "export"] as const;
-export type Action = (typeof ACTIONS)[number];
-
-const FULL: Action[] = [...ACTIONS];
-
-/**
- * docs/permissions.md → executable. Role → module → allowed actions.
- * Everything absent is denied (rule 1).
- */
-export const ROLE_PERMISSIONS: Record<RoleKey, Partial<Record<Module, Action[]>>> = {
-  owner: {
-    settings: FULL,
-    users: FULL,
-    catalog: FULL,
-    inventory: FULL,
-    sales: FULL,
-    procurement: FULL,
-    finance: FULL,
-    service: FULL,
-    storefront: FULL,
-    reports: FULL,
-  },
-  admin: {
-    settings: ["view", "create", "edit", "post"],
-    users: ["view", "create", "edit"],
-    catalog: FULL,
-    inventory: FULL,
-    sales: FULL,
-    procurement: FULL,
-    finance: FULL,
-    service: FULL,
-    storefront: FULL,
-    reports: FULL,
-  },
-  sales: {
-    catalog: ["view", "create", "edit"],
-    inventory: ["view"],
-    sales: FULL, // full + approve
-    procurement: ["view"],
-    finance: ["view"],
-    service: FULL,
-    storefront: ["view"],
-    reports: ["view"],
-  },
-  warehouse: {
-    catalog: ["view"],
-    inventory: FULL, // full + approve adjustments
-    sales: ["view", "edit"], // edit fulfillment only (PH1: narrow)
-    procurement: ["view", "create"], // receive → create goods receipts
-    service: ["view", "edit"],
-    reports: ["view"],
-  },
-  accountant: {
-    settings: ["view"],
-    catalog: ["view"],
-    inventory: ["view"],
-    sales: ["view"],
-    procurement: ["view", "edit"], // edit bills
-    finance: FULL, // full + post (period close stays Owner/Admin)
-    service: ["view"],
-    storefront: ["view"],
-    reports: ["view"],
-  },
-};
-
-export function isRoleKey(value: string): value is RoleKey {
-  return (ROLE_KEYS as readonly string[]).includes(value);
-}
 
 /**
  * Resolve effective role keys for several users in one pass (users table).
@@ -155,18 +70,6 @@ export async function roleKeysForUsers(
     result.set(first[0]._id as string, ["owner"]);
   }
   return result;
-}
-
-/**
- * The roles an assignment resolution yields may include raw strings (custom
- * roles later); unknown keys simply grant nothing (rule 1).
- */
-export function hasPermission(
-  roleKeys: readonly string[],
-  module: Module,
-  action: Action,
-): boolean {
-  return roleKeys.some((key) => ROLE_PERMISSIONS[key as RoleKey]?.[module]?.includes(action));
 }
 
 /**

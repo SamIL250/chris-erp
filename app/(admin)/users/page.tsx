@@ -22,6 +22,7 @@ import { api } from "@/convex/_generated/api";
 import type { Doc } from "@/convex/_generated/dataModel";
 import { toUserMessage } from "@/lib/errors";
 import { inviteSchema } from "@/lib/schemas/invite";
+import { useCan, useIsOwner } from "@/hooks/use-can";
 
 /** Rows of `users:list` — the profile plus its assigned role keys (PH0-22). */
 type MemberRow = Doc<"users"> & { roleKeys: string[] };
@@ -59,6 +60,9 @@ function InviteDialog({
 }) {
   const inviteUser = useMutation(api.invites.create);
   const roles = useQuery(api.roles.list);
+  // rule 4 (docs/permissions.md): only Owners pick a role — Admins get a
+  // roleless invite (the server refuses role grants either way).
+  const canPickRole = useIsOwner();
   const [serverError, setServerError] = useState<string | null>(null);
   const [sent, setSent] = useState<{ email: string; url?: string } | null>(null);
   const methods = useZodForm(inviteSchema, {
@@ -149,20 +153,22 @@ function InviteDialog({
                     autoComplete="name"
                     hint="Optional — they can confirm it when accepting"
                   />
-                  <FormSelect
-                    name="role"
-                    label="Role"
-                    placeholder="No role yet"
-                    hint="Grants their initial permissions — only an Owner can pick one"
-                    items={[
-                      { id: "", label: "No role yet" },
-                      ...(roles ?? []).map((role) => ({
-                        id: role.key,
-                        label: role.name,
-                        supportingText: role.description,
-                      })),
-                    ]}
-                  />
+                  {canPickRole ? (
+                    <FormSelect
+                      name="role"
+                      label="Role"
+                      placeholder="No role yet"
+                      hint="Grants their initial permissions — only an Owner can pick one"
+                      items={[
+                        { id: "", label: "No role yet" },
+                        ...(roles ?? []).map((role) => ({
+                          id: role.key,
+                          label: role.name,
+                          supportingText: role.description,
+                        })),
+                      ]}
+                    />
+                  ) : null}
                   <FormActions>
                     <Button color="secondary" size="lg" onPress={() => setOpen(false)}>
                       Cancel
@@ -196,6 +202,7 @@ export default function UsersPage() {
   );
   const roles = useQuery(api.roles.list);
   const roleLabel = (key: string) => roles?.find((role) => role.key === key)?.name ?? key;
+  const canInvite = useCan("users", "create");
 
   const columns: DataTableColumn<MemberRow>[] = [
     {
@@ -249,11 +256,11 @@ export default function UsersPage() {
     },
   ];
 
-  const inviteButton = (
+  const inviteButton = canInvite ? (
     <Button color="primary" size="sm" onPress={() => setInviteOpen(true)}>
       Invite user
     </Button>
-  );
+  ) : null;
 
   return (
     <div className="flex flex-col gap-6">

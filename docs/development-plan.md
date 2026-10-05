@@ -34,7 +34,7 @@
 
 | Phase          | Focus                                              | Status         | Tasks   | Gate |
 | -------------- | -------------------------------------------------- | -------------- | ------- | ---- |
-| **Phase 0**    | Foundation (scaffold, auth, RBAC, settings, shell) | 🔨 In progress | 22 / 35 | ☐    |
+| **Phase 0**    | Foundation (scaffold, auth, RBAC, settings, shell) | 🔨 In progress | 23 / 35 | ☐    |
 | **Phase 1**    | Catalog + Inventory core (schema-first)            | ⬜ Not started | 0 / 25  | ☐    |
 | **Phase 2**    | Sales & Procurement (O2C + P2P documents)          | ⬜ Not started | 0 / 29  | ☐    |
 | **Phase 3**    | Finance (double-entry, postings, reports)          | ⬜ Not started | 0 / 17  | ☐    |
@@ -119,7 +119,7 @@ chris-erp/
 ### 0.3 App shell & navigation
 
 - [x] **PH0-12** Admin layout: collapsible sidebar grouped by module (Dashboard, Catalog, Inventory, Sales, Procurement, Finance, Service, Reports, Settings), topbar with search, notification bell, user menu
-- [x] **PH0-13** Route protection middleware: unauthenticated → `(auth)`; storefront vs admin access by role (auth-level done; permission-derived route gating lands with PH0-23)
+- [x] **PH0-13** Route protection middleware: unauthenticated → `(auth)`; storefront vs admin access by role (auth-level in the proxy; permission-derived route gating delivered in PH0-23)
 - [x] **PH0-14** Global search box (searches customers/products/documents by phase availability — grows with features)
 - [x] **PH0-15** Dashboard placeholder page with KPI tiles (values `—` until data exists)
 - [x] **PH0-16** Error boundary, 404, loading conventions, toast system wired
@@ -135,7 +135,7 @@ chris-erp/
 
 - [x] **PH0-21** Permission matrix spec (doc in repo): modules × actions (view/create/edit/delete/approve/post) for roles: **Owner, Admin, Sales, Warehouse, Accountant, Storefront (customer)**
 - [x] **PH0-22** `roles` + `userRoles` tables; `requirePermission(module, action)` helper used by every mutation; permission tests (denied access proves 403-equivalent error) _(enforced on every mutation that exists today — invites/users/roles; the bootstrap-owner rule + Owner-only role grants are documented in docs/permissions.md; per-row role-change UI rides PH0-23's `useCan()`)_
-- [ ] **PH0-23** UI gating: nav items, buttons, route access derived from permissions (single `useCan()` hook)
+- [x] **PH0-23** UI gating: nav items, buttons, route access derived from permissions (single `useCan()` hook) _(hooks/use-can.ts: `useCan`/`useIsOwner`/`useNavItems` over the shared matrix in lib/permissions.ts; sidebar + ⌘K palette filtered; `PermissionGate` redirects denied routes to /dashboard; invite button = users.create, role select = Owner-only; logic unit-tested — visual check deferred to a browser session)_
 
 ### 0.6 Platform tables & core helpers
 

@@ -9,7 +9,7 @@ import type {
   NavItemType,
 } from "@/components/application/app-navigation/config";
 import { Skeleton } from "@/components/ui/skeleton";
-import { NAV_ITEMS } from "@/components/shared/nav-config";
+import { useNavItems } from "@/hooks/use-can";
 import { cx } from "@/utils/cx";
 
 /** One selectable search result. */
@@ -32,11 +32,14 @@ export interface SearchGroup {
   hits?: SearchHit[];
 }
 
-function navHits(query: string): SearchHit[] {
+function navHits(query: string, navItems: (NavItemType | NavItemDividerType)[]): SearchHit[] {
   const q = query.trim().toLowerCase();
   const hits: SearchHit[] = [];
   const walk = (items: (NavItemType | NavItemDividerType)[], parentTitle?: string) => {
     for (const item of items) {
+      // Groups (Settings) have no href — their children are still searchable,
+      // nested under the group label.
+      if (item.items) walk(item.items, item.label ?? item.href);
       if (!item.href || !item.label) continue;
       const title = parentTitle ? `${parentTitle} / ${item.label}` : item.label;
       if (!q || title.toLowerCase().includes(q) || item.href.toLowerCase().includes(q)) {
@@ -48,20 +51,21 @@ function navHits(query: string): SearchHit[] {
           icon: "icon" in item ? item.icon : undefined,
         });
       }
-      if (item.items) walk(item.items, item.label);
     }
   };
-  walk(NAV_ITEMS);
+  walk(navItems);
   return hits;
 }
 
 /**
- * Result groups for the palette. Phase 0 searches navigation; each later
- * phase appends its group here (Convex `search(q)` queries, 10-hit limit,
- * empty array for short queries) — see docs/development-plan.md PH0-14.
+ * Result groups for the palette. Phase 0 searches navigation (permission-
+ * filtered, PH0-23); each later phase appends its group here (Convex
+ * `search(q)` queries, 10-hit limit, empty array for short queries) — see
+ * docs/development-plan.md PH0-14.
  */
 function useSearchGroups(query: string): SearchGroup[] {
-  return [{ id: "navigation", label: "Navigation", hits: navHits(query) }];
+  const navItems = useNavItems();
+  return [{ id: "navigation", label: "Navigation", hits: navHits(query, navItems) }];
 }
 
 /**

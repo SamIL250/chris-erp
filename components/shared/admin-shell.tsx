@@ -21,7 +21,8 @@ import { AvatarLabelGroup } from "@/components/base/avatar/avatar-label-group";
 import { Button } from "@/components/base/buttons/button";
 import { Dropdown } from "@/components/base/dropdown/dropdown";
 import { CommandPalette } from "@/components/shared/command-palette";
-import { NAV_ITEMS, findActiveUrl } from "@/components/shared/nav-config";
+import { findActiveUrl } from "@/components/shared/nav-config";
+import { useNavItems } from "@/hooks/use-can";
 import {
   Drawer,
   DrawerBody,
@@ -56,6 +57,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
   const [searchOpen, setSearchOpen] = useState(false);
 
   const activeUrl = findActiveUrl(pathname ?? "");
+  const navItems = useNavItems();
 
   const handleSignOut = () => {
     void (async () => {
@@ -67,7 +69,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
 
   const navList = (
     <NavList
-      items={NAV_ITEMS}
+      items={navItems}
       activeUrl={activeUrl}
       className={cx("flex-1 overflow-y-auto", collapsed && "pt-4 [&_span]:hidden")}
     />
@@ -247,7 +249,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
                 // Any click inside (including links) closes the drawer.
                 onClick={() => setMobileNavOpen(false)}
               >
-                <NavList items={NAV_ITEMS} activeUrl={activeUrl} />
+                <NavList items={navItems} activeUrl={activeUrl} />
                 <div className="border-secondary border-t px-4 pt-4 pb-6">
                   {me ? (
                     <div className="mb-3">
