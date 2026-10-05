@@ -34,7 +34,7 @@
 
 | Phase          | Focus                                              | Status         | Tasks   | Gate |
 | -------------- | -------------------------------------------------- | -------------- | ------- | ---- |
-| **Phase 0**    | Foundation (scaffold, auth, RBAC, settings, shell) | 🔨 In progress | 21 / 35 | ☐    |
+| **Phase 0**    | Foundation (scaffold, auth, RBAC, settings, shell) | 🔨 In progress | 22 / 35 | ☐    |
 | **Phase 1**    | Catalog + Inventory core (schema-first)            | ⬜ Not started | 0 / 25  | ☐    |
 | **Phase 2**    | Sales & Procurement (O2C + P2P documents)          | ⬜ Not started | 0 / 29  | ☐    |
 | **Phase 3**    | Finance (double-entry, postings, reports)          | ⬜ Not started | 0 / 17  | ☐    |
@@ -127,14 +127,14 @@ chris-erp/
 ### 0.4 Auth & user management
 
 - [x] **PH0-17** Convex Auth: email/password + Google OAuth; login, signup, logout, forgot/reset password pages (Untitled UI)
-- [x] **PH0-18** `users` profile table (name, avatar, role, status active/invited/disabled), profile settings page (role display lands with RBAC in PH0-22; avatar upload with file storage in PH0-27)
-- [x] **PH0-19** Admin: invite user by email → invitee sets password → lands with assigned role (role assignment lands with RBAC in PH0-22; without a Resend key the dev link is shown in the invite dialog)
+- [x] **PH0-18** `users` profile table (name, avatar, role, status active/invited/disabled), profile settings page (role display delivered in PH0-22; avatar upload with file storage in PH0-27)
+- [x] **PH0-19** Admin: invite user by email → invitee sets password → lands with assigned role (role assignment delivered in PH0-22; without a Resend key the dev link is shown in the invite dialog)
 - [x] **PH0-20** Session handling, auth rate limiting, security headers (7d/24h session policy + 15-min access tokens, `revokeOtherSessions` after password reset & from profile, built-in 10 failed-attempts/hour limiter, CSP/HSTS/etc on every response; plus a proxy workaround for an `@convex-dev/auth` bug that turned auth redirects into blank pages)
 
 ### 0.5 RBAC
 
 - [x] **PH0-21** Permission matrix spec (doc in repo): modules × actions (view/create/edit/delete/approve/post) for roles: **Owner, Admin, Sales, Warehouse, Accountant, Storefront (customer)**
-- [ ] **PH0-22** `roles` + `userRoles` tables; `requirePermission(module, action)` helper used by every mutation; permission tests (denied access proves 403-equivalent error)
+- [x] **PH0-22** `roles` + `userRoles` tables; `requirePermission(module, action)` helper used by every mutation; permission tests (denied access proves 403-equivalent error) _(enforced on every mutation that exists today — invites/users/roles; the bootstrap-owner rule + Owner-only role grants are documented in docs/permissions.md; per-row role-change UI rides PH0-23's `useCan()`)_
 - [ ] **PH0-23** UI gating: nav items, buttons, route access derived from permissions (single `useCan()` hook)
 
 ### 0.6 Platform tables & core helpers

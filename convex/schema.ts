@@ -84,6 +84,36 @@ export default defineSchema({
     acceptedAt: v.optional(v.number()),
     revokedAt: v.optional(v.number()),
     invitedBy: v.id("users"),
+    /** Role key granted on acceptance (PH0-22); resolved against SYSTEM_ROLES. */
+    role: v.optional(v.string()),
     createdAt: v.number(),
   }).index("by_email", ["email"]),
+
+  /**
+   * RBAC (PH0-22): the assignable role catalog. Permission CHECKS never read
+   * this table — the matrix lives in code (`convex/_lib/permissions.ts`,
+   * transcribed from docs/permissions.md) — rows exist to label assignments
+   * in the UI and to leave room for custom roles later. Seeded idempotently
+   * when a role is granted (and by the PH0-34 seed script).
+   */
+  roles: defineTable({
+    key: v.string(),
+    name: v.string(),
+    description: v.optional(v.string()),
+    createdAt: v.number(),
+  }).index("by_key", ["key"]),
+
+  /**
+   * RBAC (PH0-22): role assignments. Deny by default — a user with no rows
+   * (and no bootstrap claim) can't do anything module-scoped. See
+   * docs/permissions.md for the matrix and the bootstrap rule.
+   */
+  userRoles: defineTable({
+    userId: v.id("users"),
+    roleId: v.id("roles"),
+    grantedBy: v.optional(v.id("users")),
+    createdAt: v.number(),
+  })
+    .index("by_user", ["userId"])
+    .index("by_user_role", ["userId", "roleId"]),
 });

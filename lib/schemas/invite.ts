@@ -10,6 +10,8 @@ import { emailField, passwordField } from "./auth";
 export const inviteSchema = z.object({
   email: emailField,
   name: z.string().trim().max(100, "Keep it under 100 characters"),
+  /** Role key granted with the invite; omitted = no role yet (PH0-22). */
+  role: z.string().optional(),
 });
 
 export const acceptInviteSchema = z

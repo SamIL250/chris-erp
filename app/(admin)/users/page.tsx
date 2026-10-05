@@ -1,7 +1,7 @@
 "use client";
 
 import { Check } from "@untitledui/icons";
-import { useMutation, usePaginatedQuery } from "convex/react";
+import { useMutation, usePaginatedQuery, useQuery } from "convex/react";
 import { useState } from "react";
 import { Dialog, DialogTrigger, Modal, ModalOverlay } from "@/components/application/modals/modal";
 import { Avatar } from "@/components/base/avatar/avatar";
@@ -9,12 +9,22 @@ import { Badge } from "@/components/base/badges/badges";
 import { Button } from "@/components/base/buttons/button";
 import { FeaturedIcon } from "@/components/foundations/featured-icon/featured-icon";
 import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
-import { Form, FormActions, FormAlert, FormInput, useZodForm } from "@/components/ui/form";
+import {
+  Form,
+  FormActions,
+  FormAlert,
+  FormInput,
+  FormSelect,
+  useZodForm,
+} from "@/components/ui/form";
 import { PageHeader } from "@/components/ui/page-header";
 import { api } from "@/convex/_generated/api";
 import type { Doc } from "@/convex/_generated/dataModel";
 import { toUserMessage } from "@/lib/errors";
 import { inviteSchema } from "@/lib/schemas/invite";
+
+/** Rows of `users:list` — the profile plus its assigned role keys (PH0-22). */
+type MemberRow = Doc<"users"> & { roleKeys: string[] };
 
 const STATUS: Record<
   Doc<"users">["status"],
@@ -48,9 +58,12 @@ function InviteDialog({
   onOpenChange: (open: boolean) => void;
 }) {
   const inviteUser = useMutation(api.invites.create);
+  const roles = useQuery(api.roles.list);
   const [serverError, setServerError] = useState<string | null>(null);
   const [sent, setSent] = useState<{ email: string; url?: string } | null>(null);
-  const methods = useZodForm(inviteSchema, { defaultValues: { email: "", name: "" } });
+  const methods = useZodForm(inviteSchema, {
+    defaultValues: { email: "", name: "", role: "" },
+  });
 
   const setOpen = (open: boolean) => {
     if (!open) {
@@ -111,6 +124,9 @@ function InviteDialog({
                       const result = await inviteUser({
                         email: values.email,
                         name: values.name.trim() || undefined,
+                        // "" = no role yet (permission checks deny until an
+                        // Owner assigns one); role grants are Owner-only.
+                        role: values.role || undefined,
                       });
                       setSent({ email: values.email, url: result.url });
                     } catch (error) {
@@ -132,6 +148,20 @@ function InviteDialog({
                     label="Full name"
                     autoComplete="name"
                     hint="Optional — they can confirm it when accepting"
+                  />
+                  <FormSelect
+                    name="role"
+                    label="Role"
+                    placeholder="No role yet"
+                    hint="Grants their initial permissions — only an Owner can pick one"
+                    items={[
+                      { id: "", label: "No role yet" },
+                      ...(roles ?? []).map((role) => ({
+                        id: role.key,
+                        label: role.name,
+                        supportingText: role.description,
+                      })),
+                    ]}
                   />
                   <FormActions>
                     <Button color="secondary" size="lg" onPress={() => setOpen(false)}>
@@ -156,7 +186,7 @@ function InviteDialog({
   );
 }
 
-/** Users admin (PH0-19): member list + invite flow. */
+/** Users admin (PH0-19/22): member list with roles + invite flow. */
 export default function UsersPage() {
   const [inviteOpen, setInviteOpen] = useState(false);
   const { results, isLoading, status, loadMore } = usePaginatedQuery(
@@ -164,8 +194,10 @@ export default function UsersPage() {
     {},
     { initialNumItems: 50 },
   );
+  const roles = useQuery(api.roles.list);
+  const roleLabel = (key: string) => roles?.find((role) => role.key === key)?.name ?? key;
 
-  const columns: DataTableColumn<Doc<"users">>[] = [
+  const columns: DataTableColumn<MemberRow>[] = [
     {
       id: "member",
       header: "Member",
@@ -192,6 +224,18 @@ export default function UsersPage() {
           {STATUS[row.status].label}
         </Badge>
       ),
+    },
+    {
+      id: "role",
+      header: "Role",
+      cell: (row) =>
+        row.roleKeys.length > 0 ? (
+          <Badge color="brand" size="sm">
+            {row.roleKeys.map(roleLabel).join(", ")}
+          </Badge>
+        ) : (
+          <span className="text-tertiary text-sm">No role</span>
+        ),
     },
     {
       id: "lastLogin",

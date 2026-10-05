@@ -34,7 +34,10 @@ function formatDate(timestamp?: number) {
     : "—";
 }
 
-function ProfileForm({ me }: { me: Doc<"users"> }) {
+/** `users:me` resolves the caller's roles for display (PH0-22). */
+type ProfileUser = Doc<"users"> & { roles: { key: string; name: string }[] };
+
+function ProfileForm({ me }: { me: ProfileUser }) {
   const updateProfile = useMutation(api.users.updateProfile);
   const [serverError, setServerError] = useState<string | null>(null);
   const methods = useZodForm(profileSchema, { defaultValues: { name: me.name ?? "" } });
@@ -99,6 +102,12 @@ function ProfileForm({ me }: { me: Doc<"users"> }) {
         </Form>
 
         <dl className="border-tertiary grid grid-cols-2 gap-4 border-t pt-5 text-sm">
+          <div>
+            <dt className="text-tertiary">Role</dt>
+            <dd className="text-primary font-medium">
+              {me.roles.length > 0 ? me.roles.map((role) => role.name).join(", ") : "No role yet"}
+            </dd>
+          </div>
           <div>
             <dt className="text-tertiary">Member since</dt>
             <dd className="text-primary font-medium">{formatDate(me.createdAt)}</dd>

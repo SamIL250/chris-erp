@@ -43,3 +43,26 @@ e.g. journal/period close) · `export`
 5. Tests must cover at least one denial per role (PH0-35).
 
 _When adding a module: add a row here first, then the permission constant, then the mutation checks._
+
+## Implementation notes (PH0-22)
+
+- **Code lives in `convex/_lib/permissions.ts`**: this doc transcribed as
+  `ROLE_PERMISSIONS` (source of truth stays here); `requirePermission(ctx, module, action)`
+  returns the caller's user id for the audit log and throws a user-facing
+  `ConvexError` on denial. Self-scoped actions (own profile, own session revoke)
+  are exempt by design.
+- **Tables**: `roles` (assignable catalog — seeded idempotently by `grantRole`
+  and the PH0-34 seed script) + `userRoles` (single-role model, grantedBy
+  audit trail). Checks resolve through these rows; labels come from code.
+- **Bootstrap rule**: while _no_ `userRoles` row exists anywhere (fresh
+  install, pre-seed), the earliest-created user is implicitly the Owner —
+  the app can never lock everyone out. The first grant materializes that
+  owner row (see `grantRole`), after which the fallback is gone forever.
+- **Role grants are Owner-only (rule 4)** — including the role picked in the
+  invite dialog: Admin can invite _without_ a role; re-inviting never clears
+  an existing role. You cannot change your own role (prevents self-lockout).
+- **UI**: role select in the invite dialog, role badges on `/users`, role on
+  the profile page; per-row role editing + `useCan()` gating arrive with PH0-23.
+- **Enforced today**: `invites.create`, `users.list`, `users.assignRole`,
+  `roles.list`. New mutations call `requirePermission` from day one;
+  PH0-35 verifies the sweep.

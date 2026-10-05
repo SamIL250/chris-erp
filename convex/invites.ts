@@ -1,7 +1,7 @@
-import { getAuthUserId } from "@convex-dev/auth/server";
 import { ConvexError, v } from "convex/values";
 import { randomHex, sha256Hex } from "../lib/crypto";
 import { sendEmail } from "../lib/emails";
+import { grantRole, isRoleKey, requirePermission, requireRole } from "./_lib/permissions";
 import { mutation } from "./_generated/server";
 
 /** Invite links are valid for 7 days. */
@@ -18,16 +18,14 @@ const EMAIL_PATTERN = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
  *   code, see `convex/auth.ts` → `createOrUpdateUser`) flips the profile to
  *   `active`. Without a Resend key the link is returned for the UI to show.
  * - Re-inviting revokes outstanding codes so only the newest link works.
- *
- * TODO(PH0-23): gate by permission (users.manage) once RBAC lands.
+ * - `role` (PH0-22): optional role granted with the invite. Granting or
+ *   changing roles is Owner-only (docs/permissions.md rule 4) — Admin can
+ *   invite people without a role and an Owner assigns one later.
  */
 export const create = mutation({
-  args: { email: v.string(), name: v.optional(v.string()) },
+  args: { email: v.string(), name: v.optional(v.string()), role: v.optional(v.string()) },
   handler: async (ctx, args) => {
-    const inviterId = await getAuthUserId(ctx);
-    if (inviterId === null) {
-      throw new ConvexError("Not authenticated");
-    }
+    const inviterId = await requirePermission(ctx, "users", "create");
 
     const email = args.email.toLowerCase().trim();
     if (!EMAIL_PATTERN.test(email)) {
@@ -36,6 +34,9 @@ export const create = mutation({
     const name = args.name?.trim();
     if (name !== undefined && (name.length < 1 || name.length > 100)) {
       throw new ConvexError("Name must be between 1 and 100 characters");
+    }
+    if (args.role !== undefined && !isRoleKey(args.role)) {
+      throw new ConvexError("Unknown role.");
     }
 
     const matches = await ctx.db
@@ -87,6 +88,15 @@ export const create = mutation({
       }
     }
 
+    // Role grant (PH0-22): assigned at invite time so the users table shows
+    // it immediately; the invitee can't sign in until they accept anyway.
+    // Omitting `role` never touches an existing assignment (rule 4: Admin
+    // must not be able to clear someone's role via re-invite).
+    if (args.role !== undefined) {
+      await requireRole(ctx, inviterId, "owner");
+      await grantRole(ctx, { userId, roleKey: args.role, grantedBy: inviterId });
+    }
+
     const code = randomHex(32);
     await ctx.db.insert("invites", {
       email,
@@ -94,6 +104,7 @@ export const create = mutation({
       codeHash: await sha256Hex(code),
       expiresAt: now + INVITE_TTL_MS,
       invitedBy: inviterId,
+      role: args.role,
       createdAt: now,
     });
 

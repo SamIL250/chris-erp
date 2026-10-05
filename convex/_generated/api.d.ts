@@ -8,11 +8,13 @@
  * @module
  */
 
+import type * as _lib_permissions from "../_lib/permissions.js";
 import type * as auth from "../auth.js";
 import type * as authProviders from "../authProviders.js";
 import type * as authSessions from "../authSessions.js";
 import type * as http from "../http.js";
 import type * as invites from "../invites.js";
+import type * as roles from "../roles.js";
 import type * as users from "../users.js";
 
 import type {
@@ -22,11 +24,13 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  "_lib/permissions": typeof _lib_permissions;
   auth: typeof auth;
   authProviders: typeof authProviders;
   authSessions: typeof authSessions;
   http: typeof http;
   invites: typeof invites;
+  roles: typeof roles;
   users: typeof users;
 }>;
 
