@@ -24,6 +24,7 @@ import type * as notifications from "../notifications.js";
 import type * as organization from "../organization.js";
 import type * as roles from "../roles.js";
 import type * as sequences from "../sequences.js";
+import type * as tax from "../tax.js";
 import type * as users from "../users.js";
 
 import type {
@@ -49,6 +50,7 @@ declare const fullApi: ApiFromModules<{
   organization: typeof organization;
   roles: typeof roles;
   sequences: typeof sequences;
+  tax: typeof tax;
   users: typeof users;
 }>;
 

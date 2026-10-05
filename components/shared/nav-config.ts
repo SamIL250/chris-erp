@@ -37,6 +37,7 @@ export const NAV_ITEMS: (NavItemType | NavItemDividerType)[] = [
     items: [
       { label: "Company", href: "/settings/company" },
       { label: "Currencies", href: "/settings/currencies" },
+      { label: "Tax", href: "/settings/tax" },
       { label: "Document numbering", href: "/settings/sequences" },
       { label: "Users", href: "/users" },
       { label: "Audit log", href: "/settings/audit" },
@@ -62,6 +63,7 @@ export const NAV_MODULES: Record<string, Module> = {
   "/settings/audit": "settings",
   "/settings/company": "settings",
   "/settings/currencies": "settings",
+  "/settings/tax": "settings",
   "/settings/sequences": "settings",
 };
 
