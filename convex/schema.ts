@@ -64,6 +64,8 @@ export default defineSchema({
     invitedBy: v.optional(v.id("users")),
     invitedAt: v.optional(v.number()),
     lastLoginAt: v.optional(v.number()),
+    /** Uploaded profile photo (PH0-27) — resolved to a signed URL in `users:me`. */
+    avatarFileId: v.optional(v.id("files")),
     createdAt: v.number(),
     updatedAt: v.number(),
   })

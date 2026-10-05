@@ -34,7 +34,7 @@
 
 | Phase          | Focus                                              | Status         | Tasks   | Gate |
 | -------------- | -------------------------------------------------- | -------------- | ------- | ---- |
-| **Phase 0**    | Foundation (scaffold, auth, RBAC, settings, shell) | 🔨 In progress | 26 / 35 | ☐    |
+| **Phase 0**    | Foundation (scaffold, auth, RBAC, settings, shell) | 🔨 In progress | 27 / 35 | ☐    |
 | **Phase 1**    | Catalog + Inventory core (schema-first)            | ⬜ Not started | 0 / 25  | ☐    |
 | **Phase 2**    | Sales & Procurement (O2C + P2P documents)          | ⬜ Not started | 0 / 29  | ☐    |
 | **Phase 3**    | Finance (double-entry, postings, reports)          | ⬜ Not started | 0 / 17  | ☐    |
@@ -127,7 +127,7 @@ chris-erp/
 ### 0.4 Auth & user management
 
 - [x] **PH0-17** Convex Auth: email/password + Google OAuth; login, signup, logout, forgot/reset password pages (Untitled UI)
-- [x] **PH0-18** `users` profile table (name, avatar, role, status active/invited/disabled), profile settings page (role display delivered in PH0-22; avatar upload with file storage in PH0-27)
+- [x] **PH0-18** `users` profile table (name, avatar, role, status active/invited/disabled), profile settings page (role display delivered in PH0-22; avatar upload delivered in PH0-27)
 - [x] **PH0-19** Admin: invite user by email → invitee sets password → lands with assigned role (role assignment delivered in PH0-22; without a Resend key the dev link is shown in the invite dialog)
 - [x] **PH0-20** Session handling, auth rate limiting, security headers (7d/24h session policy + 15-min access tokens, `revokeOtherSessions` after password reset & from profile, built-in 10 failed-attempts/hour limiter, CSP/HSTS/etc on every response; plus a proxy workaround for an `@convex-dev/auth` bug that turned auth redirects into blank pages)
 
@@ -142,7 +142,7 @@ chris-erp/
 - [x] **PH0-24** `schema.ts` foundations: `organizations` (single-company config), `users`, `roles`, `settings`, `sequences`, `currencies`, `exchangeRates`, `taxRates`, `taxGroups`, `auditLog`, `notifications`, `files` _(organizations/users/roles had landed in PH0-18/22; added settings, sequences, currencies, exchangeRates, taxRates, taxGroups, auditLog, notifications, files with indexes + design comments; sanity suite tests/platform-tables.test.ts writes/queries every one)_
 - [x] **PH0-25** `nextSequence(name)` document-number generator (INV-, SO-, PO-, QT-, DN-, CR-, JRNL-…) _(convex/_lib/sequences.ts: consume-in-transaction helper + pure `formatSequence` + `peekSequence` preview for the PH0-30 UI + idempotent `ensureDefaultSequences` seeding the canonical 11 (QT-/SO-/DN-/INV-/CR-/PO-/GRN-/PAY-/JRNL-/RMA-/WO-), custom rows never overwritten; tests/sequences.test.ts)_
 - [x] **PH0-26** `audit()` helper: append-only before/after snapshots, wired into a generic mutation wrapper; **audit log viewer UI** (filter by actor/entity/date) _(convex/_lib/audit.ts: `redact()` masks credential-shaped snapshot keys, `appendAudit()` resolves the actor, `auditedMutation()` wraps Convex mutations — handler returns `{result, audit}`, append happens only on success; wired into updateProfile, assignRole, invites.create; viewer at /settings/audit gated by settings.view — actor/entity/date filters, before/after detail dialog; tests/audit.test.ts)_
-- [ ] **PH0-27** File storage: Convex storage upload, signed URLs, image upload component (used later by catalog)
+- [x] **PH0-27** File storage: Convex storage upload, signed URLs, image upload component (used later by catalog) _(convex/files.ts: generateUploadUrl → POST bytes → saveFile (audited) → files:getUrl re-resolves signed URLs — they expire, so callers persist fileIds; remove = uploader or settings.edit, audited; components/ui/image-upload.tsx: drag & drop, client validation, 5 MB default; wired to the profile photo now (PH0-18 deferral), users.avatarFileId resolved in users:me; tests/files.test.ts)_
 - [ ] **PH0-28** Notification center: in-app bell + list + read/unread; `notify()` helper for future events
 
 ### 0.7 Settings & configuration

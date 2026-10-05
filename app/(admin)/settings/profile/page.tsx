@@ -7,6 +7,7 @@ import { Badge } from "@/components/base/badges/badges";
 import { Button } from "@/components/base/buttons/button";
 import { Card } from "@/components/ui/card";
 import { Form, FormActions, FormAlert, FormInput, useZodForm } from "@/components/ui/form";
+import { ImageUpload, type UploadedImage } from "@/components/ui/image-upload";
 import { PageHeader } from "@/components/ui/page-header";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "@/components/ui/toast";
@@ -39,10 +40,30 @@ type ProfileUser = Doc<"users"> & { roles: { key: string; name: string }[] };
 
 function ProfileForm({ me }: { me: ProfileUser }) {
   const updateProfile = useMutation(api.users.updateProfile);
+  const setAvatar = useMutation(api.users.setAvatar);
+  const removeFile = useMutation(api.files.remove);
   const [serverError, setServerError] = useState<string | null>(null);
   const methods = useZodForm(profileSchema, { defaultValues: { name: me.name ?? "" } });
   const status = STATUS[me.status];
   const initials = (me.name ?? me.email ?? "?").slice(0, 1).toUpperCase();
+
+  /** Attach the uploaded photo, then clean up the previous one (PH0-27). */
+  const handleAvatar = async (image: UploadedImage | null) => {
+    const previous = me.avatarFileId;
+    try {
+      await setAvatar({ fileId: image?.fileId ?? null });
+      if (previous !== undefined && previous !== image?.fileId) {
+        try {
+          await removeFile({ fileId: previous });
+        } catch {
+          // Detached either way — a stray blob is harmless and cleanup isn't.
+        }
+      }
+      toast.success(image ? "Profile photo updated" : "Profile photo removed");
+    } catch (error) {
+      toast.error(toUserMessage(error));
+    }
+  };
 
   return (
     <Card>
@@ -64,6 +85,13 @@ function ProfileForm({ me }: { me: ProfileUser }) {
             </div>
           </div>
         </div>
+
+        <ImageUpload
+          label="Profile photo"
+          kind="avatar"
+          previewUrl={me.avatarFileId !== undefined ? me.image : null}
+          onChange={(image) => void handleAvatar(image)}
+        />
 
         <Form
           methods={methods}
