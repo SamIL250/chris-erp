@@ -9,6 +9,7 @@
  */
 
 import type * as _lib_audit from "../_lib/audit.js";
+import type * as _lib_notifications from "../_lib/notifications.js";
 import type * as _lib_permissions from "../_lib/permissions.js";
 import type * as _lib_sequences from "../_lib/sequences.js";
 import type * as audit from "../audit.js";
@@ -18,6 +19,7 @@ import type * as authSessions from "../authSessions.js";
 import type * as files from "../files.js";
 import type * as http from "../http.js";
 import type * as invites from "../invites.js";
+import type * as notifications from "../notifications.js";
 import type * as roles from "../roles.js";
 import type * as users from "../users.js";
 
@@ -29,6 +31,7 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   "_lib/audit": typeof _lib_audit;
+  "_lib/notifications": typeof _lib_notifications;
   "_lib/permissions": typeof _lib_permissions;
   "_lib/sequences": typeof _lib_sequences;
   audit: typeof audit;
@@ -38,6 +41,7 @@ declare const fullApi: ApiFromModules<{
   files: typeof files;
   http: typeof http;
   invites: typeof invites;
+  notifications: typeof notifications;
   roles: typeof roles;
   users: typeof users;
 }>;

@@ -2,6 +2,7 @@ import { getAuthUserId } from "@convex-dev/auth/server";
 import { paginationOptsValidator } from "convex/server";
 import { ConvexError, v } from "convex/values";
 import { auditedMutation } from "./_lib/audit";
+import { notify } from "./_lib/notifications";
 import {
   effectiveRoleKeys,
   grantRole,
@@ -176,6 +177,22 @@ export const assignRole = auditedMutation({
       grantedBy: callerId,
     });
     const after = await effectiveRoleKeys(ctx, args.userId);
+    // Let the target know (PH0-28) — same transaction, so a failed change
+    // notifies nobody.
+    const roleName =
+      args.roleKey === null
+        ? null
+        : (SYSTEM_ROLES.find((role) => role.key === args.roleKey)?.name ?? args.roleKey);
+    await notify(ctx, {
+      userId: args.userId,
+      title: roleName === null ? "Your role was removed" : `You now have the ${roleName} role`,
+      body:
+        roleName === null
+          ? "This account currently has no permissions until a new role is granted."
+          : "An owner granted it — see your profile for what you can do.",
+      kind: roleName === null ? "warning" : "info",
+      href: "/settings/profile",
+    });
     return {
       result: undefined,
       audit: { entityId: args.userId, before: { roles: before }, after: { roles: after } },

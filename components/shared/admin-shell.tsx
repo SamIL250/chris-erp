@@ -1,15 +1,7 @@
 "use client";
 
 import { useAuthActions } from "@convex-dev/auth/react";
-import {
-  Bell01,
-  ChevronLeft,
-  ChevronRight,
-  LogOut01,
-  Menu01,
-  SearchSm,
-  User01,
-} from "@untitledui/icons";
+import { ChevronLeft, ChevronRight, LogOut01, Menu01, SearchSm, User01 } from "@untitledui/icons";
 import { Button as AriaButton } from "react-aria-components";
 import { useQuery } from "convex/react";
 import Link from "next/link";
@@ -22,6 +14,7 @@ import { Button } from "@/components/base/buttons/button";
 import { Dropdown } from "@/components/base/dropdown/dropdown";
 import { CommandPalette } from "@/components/shared/command-palette";
 import { findActiveUrl } from "@/components/shared/nav-config";
+import { NotificationBell } from "@/components/shared/notification-bell";
 import { useNavItems } from "@/hooks/use-can";
 import {
   Drawer,
@@ -182,23 +175,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
           </button>
 
           <div className="ml-auto flex items-center gap-1 sm:gap-2">
-            <Dropdown.Root>
-              <AriaButton
-                aria-label="Notifications"
-                className="text-secondary hover:bg-secondary_hover outline-focus-ring rounded-lg p-2 focus-visible:outline-2"
-              >
-                <Bell01 className="size-5" />
-              </AriaButton>
-              <Dropdown.Popover placement="bottom end">
-                <Dropdown.Menu aria-label="Notifications">
-                  <Dropdown.Item
-                    label="No notifications yet"
-                    isDisabled
-                    selectionIndicator="none"
-                  />
-                </Dropdown.Menu>
-              </Dropdown.Popover>
-            </Dropdown.Root>
+            <NotificationBell />
 
             <Dropdown.Root>
               <AriaButton

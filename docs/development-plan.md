@@ -34,7 +34,7 @@
 
 | Phase          | Focus                                              | Status         | Tasks   | Gate |
 | -------------- | -------------------------------------------------- | -------------- | ------- | ---- |
-| **Phase 0**    | Foundation (scaffold, auth, RBAC, settings, shell) | 🔨 In progress | 27 / 35 | ☐    |
+| **Phase 0**    | Foundation (scaffold, auth, RBAC, settings, shell) | 🔨 In progress | 28 / 35 | ☐    |
 | **Phase 1**    | Catalog + Inventory core (schema-first)            | ⬜ Not started | 0 / 25  | ☐    |
 | **Phase 2**    | Sales & Procurement (O2C + P2P documents)          | ⬜ Not started | 0 / 29  | ☐    |
 | **Phase 3**    | Finance (double-entry, postings, reports)          | ⬜ Not started | 0 / 17  | ☐    |
@@ -143,7 +143,7 @@ chris-erp/
 - [x] **PH0-25** `nextSequence(name)` document-number generator (INV-, SO-, PO-, QT-, DN-, CR-, JRNL-…) _(convex/_lib/sequences.ts: consume-in-transaction helper + pure `formatSequence` + `peekSequence` preview for the PH0-30 UI + idempotent `ensureDefaultSequences` seeding the canonical 11 (QT-/SO-/DN-/INV-/CR-/PO-/GRN-/PAY-/JRNL-/RMA-/WO-), custom rows never overwritten; tests/sequences.test.ts)_
 - [x] **PH0-26** `audit()` helper: append-only before/after snapshots, wired into a generic mutation wrapper; **audit log viewer UI** (filter by actor/entity/date) _(convex/_lib/audit.ts: `redact()` masks credential-shaped snapshot keys, `appendAudit()` resolves the actor, `auditedMutation()` wraps Convex mutations — handler returns `{result, audit}`, append happens only on success; wired into updateProfile, assignRole, invites.create; viewer at /settings/audit gated by settings.view — actor/entity/date filters, before/after detail dialog; tests/audit.test.ts)_
 - [x] **PH0-27** File storage: Convex storage upload, signed URLs, image upload component (used later by catalog) _(convex/files.ts: generateUploadUrl → POST bytes → saveFile (audited) → files:getUrl re-resolves signed URLs — they expire, so callers persist fileIds; remove = uploader or settings.edit, audited; components/ui/image-upload.tsx: drag & drop, client validation, 5 MB default; wired to the profile photo now (PH0-18 deferral), users.avatarFileId resolved in users:me; tests/files.test.ts)_
-- [ ] **PH0-28** Notification center: in-app bell + list + read/unread; `notify()` helper for future events
+- [x] **PH0-28** Notification center: in-app bell + list + read/unread; `notify()` helper for future events _(convex/_lib/notifications.ts `notify(ctx, {userId, title, body?, kind?, href?})` — transactional, so failed mutations notify nobody; convex/notifications.ts: list (own, by_user_time desc), countUnread (bounded 1000), markRead (foreign ids ignored), markAllRead (batched) — session-scoped, no RBAC; bell replaces the placeholder: unread badge, relative times, deep-link rows, explicit "Mark all as read"; wired to role changes (PH0-22 event); read-state deliberately not audited; tests/notifications.test.ts)_
 
 ### 0.7 Settings & configuration
 
