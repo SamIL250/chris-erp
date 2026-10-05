@@ -21,8 +21,9 @@ import type { Doc, Id } from "../_generated/dataModel";
  * - ordering: `position` is 0..n-1 unique among siblings — create appends,
  *   move splices (position clamped to the valid range), delete compacts;
  *   every touched sibling set is renumbered in the same transaction
- * - delete: blocked while subcategories exist (the products-reference check
- *   arrives with PH1-06; archived products will be hidden from pickers)
+ * - delete: blocked while subcategories exist AND while products still
+ *   list the category (`categoryIds` scan, PH1-06 — archived products
+ *   count too, so membership never dangles)
  *
  * Permissions per matrix (PH0-21): view → catalog.view (everyone), create →
  * catalog.create (owner/admin/sales), edits + moves → catalog.edit (same),
@@ -531,6 +532,21 @@ export const remove = auditedMutation({
       const count = children.length;
       throw new ConvexError(
         `This category has ${count} subcategor${count === 1 ? "y" : "ies"} — move or delete them first.`,
+      );
+    }
+
+    // PH1-06: products hold their membership in `categoryIds` (source of
+    // truth — the productCategories join mirrors it for indexed reads).
+    // Scan the array itself so a stale join can never let this delete
+    // orphan a product; the table is bounded config until import tooling.
+    // Archived/draft rows count too: their categoryIds must never dangle.
+    const products = await ctx.db.query("products").collect();
+    const inUse = products.filter((product) => product.categoryIds.includes(args.id)).length;
+    if (inUse > 0) {
+      throw new ConvexError(
+        `This category is assigned to ${inUse} product${inUse === 1 ? "" : "s"} — ${
+          inUse === 1 ? "change the product's categories first" : "change their categories first"
+        }.`,
       );
     }
 

@@ -477,6 +477,81 @@ describe("categories:remove (PH1-01)", () => {
   });
 });
 
+describe("categories:remove products-reference guard (PH1-06)", () => {
+  async function insertProduct(
+    t: T,
+    sku: string,
+    opts: { status?: "draft" | "active" | "archived"; categoryIds?: Id<"categories">[] } = {},
+  ) {
+    return await t.run((ctx) =>
+      ctx.db.insert("products", {
+        name: sku,
+        slug: sku.toLowerCase(),
+        sku,
+        status: opts.status ?? "active",
+        categoryIds: opts.categoryIds ?? [],
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      }),
+    );
+  }
+
+  test("blocked with the count while any product lists the category (archived included)", async () => {
+    const t = setup();
+    const as = await ownerTools(t);
+    const cat = await createCat(as, "Imaging");
+    await insertProduct(t, "SKU-1", { categoryIds: [cat] });
+
+    await expect(as.mutation(api.catalog.categories.remove, { id: cat })).rejects.toThrow(
+      "This category is assigned to 1 product — change the product's categories first.",
+    );
+
+    await insertProduct(t, "SKU-2", { categoryIds: [cat], status: "archived" });
+    await expect(as.mutation(api.catalog.categories.remove, { id: cat })).rejects.toThrow(
+      "This category is assigned to 2 products — change their categories first.",
+    );
+
+    // Refused deletes record nothing and touch nothing.
+    expect(await t.run((ctx) => ctx.db.get(cat))).not.toBeNull();
+    const audit = await t.run((ctx) => ctx.db.query("auditLog").collect());
+    expect(audit.filter((entry) => entry.action === "delete")).toHaveLength(0);
+  });
+
+  test("freed as products detach; a draft product blocks its own category too", async () => {
+    const t = setup();
+    const as = await ownerTools(t);
+    const cat = await createCat(as, "Lab");
+    const other = await createCat(as, "Other");
+    const p1 = await insertProduct(t, "SKU-1", { categoryIds: [cat] });
+    const p2 = await insertProduct(t, "SKU-2", { categoryIds: [cat] });
+    const p3 = await insertProduct(t, "SKU-3", { categoryIds: [other], status: "draft" });
+
+    // Detaching one of two keeps the guard up, count drops.
+    await t.run((ctx) => ctx.db.patch(p1, { categoryIds: [] }));
+    await expect(as.mutation(api.catalog.categories.remove, { id: cat })).rejects.toThrow(
+      "This category is assigned to 1 product — change the product's categories first.",
+    );
+
+    await t.run((ctx) => ctx.db.patch(p2, { categoryIds: [] }));
+    await as.mutation(api.catalog.categories.remove, { id: cat }); // fully detached
+
+    // The draft product in the OTHER category blocks that one (its row is
+    // still live source-of-truth membership), and nothing else.
+    await expect(as.mutation(api.catalog.categories.remove, { id: other })).rejects.toThrow(
+      "This category is assigned to 1 product — change the product's categories first.",
+    );
+    await t.run((ctx) => ctx.db.patch(p3, { categoryIds: [] }));
+    await as.mutation(api.catalog.categories.remove, { id: other });
+
+    const audit = await t.run((ctx) => ctx.db.query("auditLog").collect());
+    const deletes = audit.filter((entry) => entry.action === "delete");
+    expect(deletes.map((entry) => entry.entityId).sort()).toEqual([cat, other].sort());
+    // The detached products themselves are untouched.
+    expect(await t.run((ctx) => ctx.db.get(p1))).not.toBeNull();
+    expect(await t.run((ctx) => ctx.db.get(p2))).not.toBeNull();
+  });
+});
+
 describe("categories:list (PH1-01)", () => {
   test("DFS order with computed depth and path", async () => {
     const t = setup();

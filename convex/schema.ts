@@ -309,31 +309,74 @@ export default defineSchema({
     .index("by_url_path", ["urlPath"]),
 
   /**
-   * Product master (PH1-06 completes this table). The identity + lifecycle
-   * core lands with PH1-02 because the category page's product counts and
-   * "uncategorized" stat read it (plan schema-first rule); barcode, brand,
-   * descriptions, taxCategory, track flags, warranty/shelf-life, UoM,
-   * images and attribute-set links arrive with PH1-06/07/13.
+   * Product master — identity/lifecycle core landed with PH1-02 (the
+   * category page's product counts and "uncategorized" stat read it, plan
+   * schema-first rule); **PH1-06 completes the field manifest** from the
+   * task line. Every PH1-06 field is OPTIONAL so documents written before
+   * it keep reading — writers always set them (PH1-07's editor); readers
+   * treat absent as `false` / `[]` / unset (e.g. `serialTracked === true`).
+   *
+   * Field → later task: track flags + warranty/shelf-life → PH1-12
+   * (behavior/rules; field names already final), unitOfMeasure → PH1-11
+   * (base UoM code; conversions + purchase/sales UoM), images[] → PH1-13
+   * (storage/reorder/alt live in the media flow), attributeSetIds[] →
+   * product-level sets beyond the category-inherited ones (PH1-07 merges
+   * them with `attributes.forCategory`), longDescription → rich HTML,
+   * sanitized at write, taxCategory → the PH0-24 `taxGroups.rates` keys
+   * ("standard" | "reduced" | "zero") plus "exempt" (category-level, no
+   * rate — see the taxGroups comment).
+   *
    * `categoryIds[]` is the PH1-06 contract — a product can sit in several
    * categories. Convex indexes an array field as ONE whole-array value
    * (it can't answer "contains this category"), so "products in this
    * category" reads go through the `productCategories` join table
    * (PH1-05), kept in sync with this array by the writer mutations.
-   * Lookups: storefront slug, warehouse/POS barcode→SKU later, status
-   * feeds pickers (archived hidden everywhere, PH1-15).
+   * Lookups: storefront slug (`by_slug`), warehouse/POS scan via barcode
+   * (`by_barcode` — a row without a barcode sits under the index's null
+   * key, so `eq(value)` lookups never match it), status feeds pickers
+   * (archived hidden everywhere, PH1-15). Brand/name filter in JS until
+   * scale demands an index (research: Convex keyword search first). SKU
+   * format rules live in `lib/sku.ts` (PH1-06); uniqueness is `by_sku` at
+   * write time.
    */
   products: defineTable({
     name: v.string(),
     slug: v.string(),
+    /** Normalized (trim+uppercase), 3–32, charset-checked by lib/sku. */
     sku: v.string(),
+    /** Scanned lookups — optional; `eq` on a real value skips blank rows. */
+    barcode: v.optional(v.string()),
+    brand: v.optional(v.string()),
+    /** One-line storefront/teaser copy (PH1-07 validates the length). */
+    shortDescription: v.optional(v.string()),
+    /** Rich detail copy — HTML, sanitized by the writer (PH1-07). */
+    longDescription: v.optional(v.string()),
     status: v.union(v.literal("draft"), v.literal("active"), v.literal("archived")),
+    taxCategory: v.optional(
+      v.union(v.literal("standard"), v.literal("reduced"), v.literal("zero"), v.literal("exempt")),
+    ),
+    // Tracking flags + quantities (PH1-12 activates the rules; names final now).
+    serialTracked: v.optional(v.boolean()),
+    lotTracked: v.optional(v.boolean()),
+    expiryRequired: v.optional(v.boolean()),
+    warrantyEligible: v.optional(v.boolean()),
+    warrantyMonths: v.optional(v.number()),
+    shelfLifeDays: v.optional(v.number()),
+    allowBackorder: v.optional(v.boolean()),
+    /** Base UoM code ("each" by convention) — conversions land PH1-11. */
+    unitOfMeasure: v.optional(v.string()),
+    /** Cover-first image list (PH1-13: upload, reorder, alt text). */
+    images: v.optional(v.array(v.id("files"))),
     categoryIds: v.array(v.id("categories")),
+    /** Product-level attribute sets (extra beyond category-inherited). */
+    attributeSetIds: v.optional(v.array(v.id("attributeSets"))),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
     .index("by_slug", ["slug"])
     .index("by_sku", ["sku"])
-    .index("by_status", ["status"]),
+    .index("by_status", ["status"])
+    .index("by_barcode", ["barcode"]),
 
   /**
    * Product↔category membership (PH1-05): the join table Convex needs to
