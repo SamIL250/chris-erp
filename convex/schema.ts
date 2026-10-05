@@ -70,4 +70,20 @@ export default defineSchema({
     .index("email", ["email"]) // required by @convex-dev/auth (exact name)
     .index("phone", ["phone"]) // required by @convex-dev/auth (exact name)
     .index("by_status", ["status"]),
+
+  /**
+   * Invite codes for admin-invited users (PH0-19). The raw code only ever
+   * exists in the emailed link — we store its SHA-256 so a database leak
+   * can't take over pending invites.
+   */
+  invites: defineTable({
+    email: v.string(),
+    userId: v.id("users"),
+    codeHash: v.string(),
+    expiresAt: v.number(),
+    acceptedAt: v.optional(v.number()),
+    revokedAt: v.optional(v.number()),
+    invitedBy: v.id("users"),
+    createdAt: v.number(),
+  }).index("by_email", ["email"]),
 });

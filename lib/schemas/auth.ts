@@ -5,7 +5,11 @@ import { z } from "zod";
  * (see components/ui/form.tsx + docs/forms-and-validation.md).
  */
 
-const emailField = z.string().trim().min(1, "Email is required").email("Enter a valid email");
+export const emailField = z
+  .string()
+  .trim()
+  .min(1, "Email is required")
+  .email("Enter a valid email");
 
 /** Mirrors Convex Auth's default rule (min 8 chars) so errors surface inline. */
 export const passwordField = z.string().min(8, "Use at least 8 characters");

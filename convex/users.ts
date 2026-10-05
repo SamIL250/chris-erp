@@ -1,6 +1,7 @@
 import { getAuthUserId } from "@convex-dev/auth/server";
+import { paginationOptsValidator } from "convex/server";
+import { ConvexError, v } from "convex/values";
 import { mutation, query } from "./_generated/server";
-import { v } from "convex/values";
 
 /**
  * The signed-in user's own profile (null when unauthenticated).
@@ -25,8 +26,23 @@ export const updateProfile = mutation({
     }
     const name = args.name.trim();
     if (name.length < 1 || name.length > 100) {
-      throw new Error("Name must be between 1 and 100 characters");
+      throw new ConvexError("Name must be between 1 and 100 characters");
     }
     await ctx.db.patch(userId, { name, updatedAt: Date.now() });
+  },
+});
+
+/**
+ * Admin: all user profiles for the users table (PH0-19), newest first.
+ * TODO(PH0-23): scope by permission (users.view) once RBAC lands.
+ */
+export const list = query({
+  args: { paginationOpts: paginationOptsValidator },
+  handler: async (ctx, args) => {
+    const viewerId = await getAuthUserId(ctx);
+    if (viewerId === null) {
+      throw new Error("Not authenticated");
+    }
+    return await ctx.db.query("users").order("desc").paginate(args.paginationOpts);
   },
 });

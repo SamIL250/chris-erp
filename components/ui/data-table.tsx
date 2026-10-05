@@ -5,12 +5,12 @@
  * column visibility + row → detail drawer.
  *
  * Convex wiring (page side):
- *   const { items, count, isLoading, loadMore } = usePaginatedQuery(
+ *   const { results, isLoading, status, loadMore } = usePaginatedQuery(
  *     api.<domain>.list, { ...filters }, { initialNumItems: 25 });
  *   <DataTable
- *     rows={items} rowId={(r) => r._id}
+ *     rows={results} rowId={(r) => r._id}
  *     sort={sort} onSortChange={setSort}   // → pass `{ key: sort.key, direction: sort.direction }` as query order
- *     pagination={{ isLoading, hasMore: count === items.length && …, onLoadMore: () => loadMore(25) }}
+ *     pagination={{ isLoading, hasMore: status === "CanLoadMore", onLoadMore: () => loadMore(25) }}
  *   />
  *
  * Row interaction: RAC table rows are not clickable elements, so `onRowClick` is wired

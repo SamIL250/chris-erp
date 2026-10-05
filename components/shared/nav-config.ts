@@ -33,7 +33,10 @@ export const NAV_ITEMS: (NavItemType | NavItemDividerType)[] = [
   {
     label: "Settings",
     icon: Settings01,
-    items: [{ label: "Profile", href: "/settings/profile" }],
+    items: [
+      { label: "Users", href: "/users" },
+      { label: "Profile", href: "/settings/profile" },
+    ],
   },
 ];
 

@@ -6,6 +6,9 @@ import type {
   DataModelFromSchemaDefinition,
   GenericMutationCtx,
 } from "convex/server";
+import { ConvexError } from "convex/values";
+import { sha256Hex } from "../lib/crypto";
+import { sendEmail } from "../lib/emails";
 import type schema from "./schema";
 
 /**
@@ -26,11 +29,9 @@ function appCtx(ctx: GenericMutationCtx<AnyDataModel>): AppMutationCtx {
 const googleEnabled = !!process.env.AUTH_GOOGLE_ID && !!process.env.AUTH_GOOGLE_SECRET;
 
 /**
- * Password-reset email delivery.
- *
- * Uses Resend when RESEND_API_KEY is configured on the deployment
- * (`npx convex env set RESEND_API_KEY …`). In development without a key the
- * link is printed to the Convex logs (`npx convex logs`) so flows are testable.
+ * Password-reset email delivery (PH0-17) via the shared sender (PH0-19) —
+ * Resend when `RESEND_API_KEY` is set on the deployment, otherwise the link
+ * is printed to the Convex logs (`npx convex logs`).
  */
 const resetEmail: EmailConfig = {
   id: "password-reset",
@@ -39,27 +40,11 @@ const resetEmail: EmailConfig = {
   from: process.env.EMAIL_FROM ?? "Chris ERP <onboarding@resend.dev>",
   maxAge: 60 * 30, // link valid 30 minutes
   async sendVerificationRequest({ identifier, url }) {
-    const apiKey = process.env.RESEND_API_KEY;
-    if (!apiKey) {
-      console.warn(`[auth] Password reset link for ${identifier}: ${url}`);
-      return;
-    }
-    const res = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        from: process.env.EMAIL_FROM ?? "Chris ERP <onboarding@resend.dev>",
-        to: [identifier],
-        subject: "Reset your Chris ERP password",
-        text: `Reset your password by opening this link:\n${url}\n\nIf you didn't request this, you can ignore this email.`,
-      }),
+    await sendEmail({
+      to: identifier,
+      subject: "Reset your Chris ERP password",
+      text: `Reset your password by opening this link:\n${url}\n\nIf you didn't request this, you can ignore this email.`,
     });
-    if (!res.ok) {
-      throw new Error(`Failed to send reset email (${res.status}): ${await res.text()}`);
-    }
   },
 };
 
@@ -80,10 +65,18 @@ export const { auth, signIn, signOut, store, isAuthenticated } = convexAuth({
           throw new Error("Email is required");
         }
         const requestedName = typeof params.name === "string" ? params.name.trim() : "";
-        return {
+        const result: { name: string; email: string; inviteCode?: string } = {
           name: requestedName || email.split("@")[0] || "User",
           email,
         };
+        // Invite acceptance (PH0-19): forward the emailed code so
+        // `createOrUpdateUser` can verify it (sign-up only).
+        const inviteCode =
+          params.flow === "signUp" && typeof params.inviteCode === "string"
+            ? params.inviteCode
+            : "";
+        if (inviteCode) result.inviteCode = inviteCode;
+        return result;
       },
       reset: resetEmail,
       // No `verify` → sign-up is usable immediately (email verification lands
@@ -98,7 +91,9 @@ export const { auth, signIn, signOut, store, isAuthenticated } = convexAuth({
      * required app fields and for SAFE email/phone linking: an identifier may
      * only claim an existing profile when it was proven (verified by the
      * provider or the flow type) — otherwise a stranger could take over an
-     * invited profile just by signing up with its email.
+     * invited profile just by signing up with its email. The one exception is
+     * invite acceptance (PH0-19): an emailed, single-use invite code proves
+     * possession and claims exactly the invited profile.
      */
     async createOrUpdateUser(rawCtx, { existingUserId, profile, provider, type }) {
       const ctx = appCtx(rawCtx);
@@ -120,10 +115,66 @@ export const { auth, signIn, signOut, store, isAuthenticated } = convexAuth({
         provider.type === "oidc";
       const phoneLinkable = profile.phoneVerified === true || type === "phone";
 
+      let userId = existingUserId;
+
+      // ── Invite acceptance (PH0-19) ───────────────────────────────────────
+      // A password sign-up carrying the emailed invite code may claim the
+      // invited profile: possession of the code (single-use, SHA-256 at rest,
+      // 7-day expiry) is the proof. An invalid code ABORTS the sign-up — this
+      // runs inside the same mutation that creates the auth account, so no
+      // orphaned account is left behind.
+      const inviteCode = typeof profile.inviteCode === "string" ? profile.inviteCode : undefined;
+      if (inviteCode !== undefined) {
+        if (userId !== null || email === undefined) {
+          throw new ConvexError("This invitation link is invalid.");
+        }
+        const invitedMatches = await ctx.db
+          .query("users")
+          .withIndex("email", (q) => q.eq("email", email))
+          .take(2);
+        if (invitedMatches.length !== 1) {
+          throw new ConvexError(
+            "This invitation is no longer valid. Ask an administrator to send a new one.",
+          );
+        }
+        const invitedProfile = invitedMatches[0];
+        if (invitedProfile.status === "active") {
+          throw new ConvexError("This invitation has already been accepted — sign in instead.");
+        }
+        if (invitedProfile.status === "disabled") {
+          throw new ConvexError("This account has been disabled. Contact your administrator.");
+        }
+        const codeHash = await sha256Hex(inviteCode);
+        const candidates = await ctx.db
+          .query("invites")
+          .withIndex("by_email", (q) => q.eq("email", email))
+          .take(20);
+        const valid = candidates.filter(
+          (invite) =>
+            invite.codeHash === codeHash &&
+            invite.acceptedAt === undefined &&
+            invite.revokedAt === undefined &&
+            invite.expiresAt > now,
+        );
+        if (valid.length === 0) {
+          throw new ConvexError(
+            "This invitation link is invalid or has expired. Ask an administrator to send a new one.",
+          );
+        }
+        await ctx.db.patch(invitedProfile._id, {
+          ...(name !== undefined ? { name } : {}),
+          status: "active",
+          updatedAt: now,
+        });
+        for (const invite of valid) {
+          await ctx.db.patch(invite._id, { acceptedAt: now });
+        }
+        return invitedProfile._id;
+      }
+
       // Resolve the target profile. `.take(2)` instead of `.unique()`:
       // duplicate emails are possible (self-signup doesn't link, see above),
       // and an ambiguous match must not link.
-      let userId = existingUserId;
       if (userId === null && email !== undefined && emailLinkable) {
         const matches = await ctx.db
           .query("users")
@@ -147,9 +198,28 @@ export const { auth, signIn, signOut, store, isAuthenticated } = convexAuth({
             ...(phone !== undefined ? { phone } : {}),
             ...(name !== undefined && !existing.name ? { name } : {}),
             ...(image !== undefined && !existing.image ? { image } : {}),
+            // A proven identity (OAuth / verified email) signing in against an
+            // invited profile accepts the invitation (PH0-19). Disabled stays
+            // disabled — `beforeSessionCreation` blocks it either way.
+            ...(existing.status === "invited" ? { status: "active" as const } : {}),
             updatedAt: now,
           });
           return userId;
+        }
+      }
+
+      // A password sign-up WITHOUT a code must not create a parallel profile
+      // for an invited address — point them at their invitation instead.
+      // (OAuth and verified-email flows never reach here: they link above.)
+      if (userId === null && email !== undefined) {
+        const invitedMatches = await ctx.db
+          .query("users")
+          .withIndex("email", (q) => q.eq("email", email))
+          .take(2);
+        if (invitedMatches.length === 1 && invitedMatches[0].status === "invited") {
+          throw new ConvexError(
+            "You've been invited to join Chris ERP — open the invitation email to set up your account.",
+          );
         }
       }
 
@@ -163,7 +233,7 @@ export const { auth, signIn, signOut, store, isAuthenticated } = convexAuth({
         updatedAt: now,
       });
     },
-    /** Runs before every session is created: block disabled accounts, track last login. */
+    /** Runs before every session is created: block unready accounts, track last login. */
     async beforeSessionCreation(rawCtx, { userId }) {
       const ctx = appCtx(rawCtx);
       const user = await ctx.db.get(userId);
@@ -171,7 +241,15 @@ export const { auth, signIn, signOut, store, isAuthenticated } = convexAuth({
         throw new Error("Account not found");
       }
       if (user.status === "disabled") {
-        throw new Error("This account has been disabled. Contact your administrator.");
+        throw new ConvexError("This account has been disabled. Contact your administrator.");
+      }
+      if (user.status === "invited") {
+        // Defense in depth: sign-in with a password is impossible before the
+        // invite is accepted (no auth account yet), and OAuth activates the
+        // profile during linking — this covers anything unexpected.
+        throw new ConvexError(
+          "This invitation hasn't been accepted yet — open your invitation email to set up your account.",
+        );
       }
       await ctx.db.patch(userId, { lastLoginAt: Date.now() });
     },
