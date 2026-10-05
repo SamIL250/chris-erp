@@ -222,6 +222,38 @@ export const list = query({
   },
 });
 
+/**
+ * Per-category product counts + the uncategorized bucket (PH1-02 admin
+ * tree). Full scan of `products` — counts need every category in one round
+ * trip, and the catalog is bounded config-adjacent data at admin scale.
+ *
+ * Archived products don't count anywhere: they're hidden from pickers and
+ * the storefront (PH1-15), so counts reflect draft+active. A product in
+ * several categories counts in each; no category (or none that still
+ * exists) lands in `uncategorized`. Counts keyed by id string so the page
+ * can index them directly.
+ */
+export const stats = query({
+  args: {},
+  handler: async (ctx) => {
+    await requirePermission(ctx, "catalog", "view");
+    const products = await ctx.db.query("products").collect();
+    const byCategory: Record<string, number> = {};
+    let uncategorized = 0;
+    for (const product of products) {
+      if (product.status === "archived") continue;
+      if (product.categoryIds.length === 0) {
+        uncategorized += 1;
+        continue;
+      }
+      for (const categoryId of product.categoryIds) {
+        byCategory[categoryId] = (byCategory[categoryId] ?? 0) + 1;
+      }
+    }
+    return { byCategory, uncategorized };
+  },
+});
+
 export const create = auditedMutation({
   entity: "categories",
   action: "create",

@@ -293,4 +293,27 @@ export default defineSchema({
   })
     .index("by_slug", ["slug"])
     .index("by_parent_position", ["parentId", "position"]),
+
+  /**
+   * Product master (PH1-06 completes this table). The identity + lifecycle
+   * core lands with PH1-02 because the category page's product counts and
+   * "uncategorized" stat read it (plan schema-first rule); barcode, brand,
+   * descriptions, taxCategory, track flags, warranty/shelf-life, UoM,
+   * images and attribute-set links arrive with PH1-06/07/13.
+   * `categoryIds[]` is the PH1-06 contract — a product can sit in several
+   * categories. Lookups: storefront slug, warehouse/POS barcode→SKU later,
+   * status feeds pickers (archived hidden everywhere, PH1-15).
+   */
+  products: defineTable({
+    name: v.string(),
+    slug: v.string(),
+    sku: v.string(),
+    status: v.union(v.literal("draft"), v.literal("active"), v.literal("archived")),
+    categoryIds: v.array(v.id("categories")),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_slug", ["slug"])
+    .index("by_sku", ["sku"])
+    .index("by_status", ["status"]),
 });

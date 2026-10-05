@@ -2,7 +2,7 @@
 
 > **Companion to:** [`erp-research-and-features.md`](./erp-research-and-features.md) (research, decisions, feature priorities)
 > **Stack:** Next.js (App Router) · Convex · Untitled UI (components + icons) · Stripe · Resend · Tailwind v4
-> **Status:** Phase 1 🔄 in progress — category tree shipped (1 / 25, Catalog & Inventory)
+> **Status:** Phase 1 🔄 in progress — category tree + admin UI shipped (2 / 25, Catalog & Inventory)
 > **Last updated:** 2026-10-05
 
 ---
@@ -35,7 +35,7 @@
 | Phase          | Focus                                              | Status         | Tasks   | Gate |
 | -------------- | -------------------------------------------------- | -------------- | ------- | ---- |
 | **Phase 0**    | Foundation (scaffold, auth, RBAC, settings, shell) | ✅ Complete    | 35 / 35 | ☑    |
-| **Phase 1**    | Catalog + Inventory core (schema-first)            | 🔨 In progress | 1 / 25  | ☐    |
+| **Phase 1**    | Catalog + Inventory core (schema-first)            | 🔨 In progress | 2 / 25  | ☐    |
 | **Phase 2**    | Sales & Procurement (O2C + P2P documents)          | ⬜ Not started | 0 / 29  | ☐    |
 | **Phase 3**    | Finance (double-entry, postings, reports)          | ⬜ Not started | 0 / 17  | ☐    |
 | **Phase 4**    | Ecommerce storefront (B2C + B2B portal)            | ⬜ Not started | 0 / 24  | ☐    |
@@ -173,14 +173,14 @@ chris-erp/
 ### 1.1 Categories & attributes
 
 - [x] **PH1-01** Category tree: CRUD nested nodes, slug auto + unique, SEO title/description, visibility toggle, manual ordering, move/reparent rules
-- [ ] **PH1-02** Category admin UI: tree view + side editor, product counts, "uncategorized" handling
+- [x] **PH1-02** Category admin UI: tree view + side editor, product counts, "uncategorized" handling
 - [ ] **PH1-03** Attribute definitions: name + type (text, number, select, multi-select, boolean, date) + optional units
 - [ ] **PH1-04** Attribute **sets**: group attributes, assign set(s) to category → products in that category inherit fields
 - [ ] **PH1-05** Storefront-ready indexes: category path/products-by-category, attribute filters index
 
 ### 1.2 Product master
 
-- [ ] **PH1-06** `products` table: name, slug, SKU, barcode, brand, short/long description (rich), status (draft/active/archived), taxCategory, track flags, warranty/shelf-life fields, UoM, images[], categoryIds[], attributeSetIds[]
+- [ ] **PH1-06** `products` table: name, slug, SKU, barcode, brand, short/long description (rich), status (draft/active/archived), taxCategory, track flags, warranty/shelf-life fields, UoM, images[], categoryIds[], attributeSetIds[] — _core identity/lifecycle fields (name, slug, SKU, status, categoryIds + indexes) + the table itself landed early with PH1-02 because its counts/uncategorized stats read it; this task adds the remaining fields and the SKU rules_
 - [ ] **PH1-07** Product create/edit page: sections (Basic, Pricing, Attributes [dynamic from set], Inventory/Tracking, Media, SEO), autosave draft, validation
 - [ ] **PH1-08** Product list: reactive table — filter by category/brand/status/flags, search by name/SKU/barcode, bulk status change, column sort
 - [ ] **PH1-09** Variants: option axes (from set attributes e.g. color/config) → variant matrix, per-variant SKU/price/barcode/track flags; product-level defaults fill variants
@@ -544,7 +544,44 @@ _Move into a phase only via explicit re-prioritization._
 
 **Next up:** PH1-02 — Category admin UI (tree view + side editor).
 
-| Date       | Session       | Shipped (task IDs) | Decisions / notes                                                         | Next up                    |
-| ---------- | ------------- | ------------------ | ------------------------------------------------------------------------- | -------------------------- |
-| 2026-10-04 | Plan created  | —                  | Research doc + development plan aligned with scoping decisions            | Start Phase 0 (PH0-01…)    |
-| 2026-10-05 | Phase 1 start | PH1-01             | Category tree backend; global unique slugs, computed paths, guarded moves | PH1-02 (category admin UI) |
+### 2026-10-05 · Category admin UI (PH1-02)
+
+**Shipped**
+
+- `/catalog` (redirect) + `/catalog/categories`: tree card (collapse via
+  computed paths, per-row product counts, hidden indicator, add-child) and
+  a persistent side editor — create/edit with live slug suggestion, parent
+  select (self/descendants excluded), position Up/Down, two-step delete
+  confirm, SEO fields. View-only roles get a read-only summary panel;
+  pinned "Uncategorized" row under the tree. **Phase 1: 2/25.**
+- `categories:stats` query (catalog.view): per-category counts +
+  uncategorized bucket in one round trip.
+- `products` table core (name/slug/sku/status/categoryIds +
+  `by_slug`/`by_sku`/`by_status`) landed here because the counts read it —
+  PH1-06 completes the table with the remaining fields (noted in §1.2).
+- Demo seed extended (CT-03): 5 categories + 7 products incl. one
+  uncategorized and one archived → the page shows real numbers on a
+  fresh `npm run seed`.
+
+**Decisions**
+
+- Counts include draft+active, exclude archived (hidden everywhere per
+  PH1-15), and count a product in several categories in each; nothing
+  left → `uncategorized`. Stats full-scan `products` — one bounded admin
+  read, same rationale as the unpaginated tree.
+- Sidebar stays flat (`/catalog` → redirect) until Products (PH1-08)
+  takes the index route; no nav changes this task.
+- Reparent from the editor = `update` + `move`: two audited entries
+  (field edit + explicit tree move) rather than doubling move logic into
+  `update`.
+- `tests/rateLimit.test.ts` lock test: explicit 20s timeout — 11
+  password-hash round trips trip vitest's 5s default under 18 parallel
+  workers (load-sensitive flake; logic untouched).
+
+**Next up:** PH1-03 — Attribute definitions (name/type/units).
+
+| Date       | Session         | Shipped (task IDs) | Decisions / notes                                                                              | Next up                        |
+| ---------- | --------------- | ------------------ | ---------------------------------------------------------------------------------------------- | ------------------------------ |
+| 2026-10-04 | Plan created    | —                  | Research doc + development plan aligned with scoping decisions                                 | Start Phase 0 (PH0-01…)        |
+| 2026-10-05 | Phase 1 start   | PH1-01             | Category tree backend; global unique slugs, computed paths, guarded moves                      | PH1-02 (category admin UI)     |
+| 2026-10-05 | Phase 1 (cont.) | PH1-02             | Category admin UI + stats; products core landed early (PH1-06 note); demo catalog seed (CT-03) | PH1-03 (attribute definitions) |

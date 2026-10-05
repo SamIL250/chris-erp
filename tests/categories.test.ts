@@ -494,3 +494,55 @@ describe("categories:list (PH1-01)", () => {
     expect(rows[0]).toMatchObject({ slug: "a", position: 0 });
   });
 });
+
+describe("categories:stats (PH1-02)", () => {
+  async function insertProduct(
+    t: T,
+    sku: string,
+    opts: { status?: "draft" | "active" | "archived"; categoryIds?: Id<"categories">[] } = {},
+  ) {
+    return await t.run((ctx) =>
+      ctx.db.insert("products", {
+        name: sku,
+        slug: sku.toLowerCase(),
+        sku,
+        status: opts.status ?? "active",
+        categoryIds: opts.categoryIds ?? [],
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      }),
+    );
+  }
+
+  test("counts draft+active per category, buckets uncategorized, excludes archived", async () => {
+    const t = setup();
+    const as = await ownerTools(t);
+    const root = await createCat(as, "Root");
+    const child = await createCat(as, "Child", { parentId: root });
+
+    await insertProduct(t, "P1", { categoryIds: [root] });
+    await insertProduct(t, "P2", { categoryIds: [child] });
+    await insertProduct(t, "P3", { categoryIds: [root, child] }); // in several categories
+    await insertProduct(t, "P4"); // uncategorized
+    await insertProduct(t, "P5", { status: "draft", categoryIds: [child] }); // drafts count
+    await insertProduct(t, "P6", { status: "archived", categoryIds: [child] }); // archived doesn't
+    await insertProduct(t, "P7", { status: "archived" }); // …not even in uncategorized
+
+    const stats = await as.query(api.catalog.categories.stats, {});
+    expect(stats.byCategory).toEqual({ [root]: 2, [child]: 3 });
+    expect(stats.uncategorized).toBe(1);
+  });
+
+  test("stats is catalog.view — strangers refused, warehouse sees empty buckets", async () => {
+    const t = setup();
+    await expect(t.query(api.catalog.categories.stats, {})).rejects.toThrow("Not authenticated");
+
+    const warehouse = await seedUser(t, "warehouse@example.com");
+    await grant(t, warehouse, "warehouse");
+    const viewer = t.withIdentity({ subject: `${warehouse}|session-1` });
+    expect(await viewer.query(api.catalog.categories.stats, {})).toEqual({
+      byCategory: {},
+      uncategorized: 0,
+    });
+  });
+});

@@ -4,6 +4,7 @@ import { auditedMutation } from "./_lib/audit";
 import { inviteUser } from "./_lib/invites";
 import { grantRole, requirePermission, requireRole } from "./_lib/permissions";
 import { ensureDefaultSequences } from "./_lib/sequences";
+import type { Id } from "./_generated/dataModel";
 
 /**
  * Demo-data seed (PH0-34) — idempotent, additive, never overwrites.
@@ -17,6 +18,9 @@ import { ensureDefaultSequences } from "./_lib/sequences";
  *      role granted — invite codes returned in the result so a dev can set
  *      passwords without Resend. Existing users are only ever given a role
  *      they don't have yet; disabled accounts are left alone.
+ *   6. a demo category tree + products (slug/SKU-keyed) — including one
+ *      uncategorized and one archived product, so the Categories page shows
+ *      real counts and the archived exclusion (CT-03).
  *
  * Safety: grants roles, so it is Owner-only (settings.create first per rule
  * 2, then requireRole — Admin gets rule 4's message). Running it twice makes
@@ -153,6 +157,117 @@ export const seed = auditedMutation({
         await grantRole(ctx, { userId: existing._id, roleKey: role.key, grantedBy: callerId });
         bump("roleGrants");
       }
+    }
+
+    // 6. Demo catalog (CT-03) — keyed by slug/SKU so re-runs skip whatever
+    //    already exists; seeded categories append after your own roots.
+    const demoCategories = [
+      { name: "Imaging & Diagnostics", slug: "imaging-diagnostics", parentSlug: null },
+      {
+        name: "Ultrasound Systems",
+        slug: "ultrasound-systems",
+        parentSlug: "imaging-diagnostics",
+      },
+      { name: "Patient Monitors", slug: "patient-monitors", parentSlug: "imaging-diagnostics" },
+      { name: "Lab Equipment", slug: "lab-equipment", parentSlug: null },
+      { name: "Centrifuges", slug: "centrifuges", parentSlug: "lab-equipment" },
+    ] as const;
+    const existingCategories = await ctx.db.query("categories").collect();
+    const categoryBySlug = new Map(existingCategories.map((row) => [row.slug, row._id]));
+    const nextPosition = new Map<string, number>();
+    for (const category of existingCategories) {
+      const key = category.parentId ?? "";
+      nextPosition.set(key, Math.max(nextPosition.get(key) ?? 0, category.position + 1));
+    }
+    for (const category of demoCategories) {
+      if (categoryBySlug.has(category.slug)) continue;
+      const parentId =
+        category.parentSlug === null ? undefined : categoryBySlug.get(category.parentSlug);
+      const parentKey = parentId ?? "";
+      const id = await ctx.db.insert("categories", {
+        name: category.name,
+        slug: category.slug,
+        ...(parentId !== undefined ? { parentId } : {}),
+        visible: true,
+        position: nextPosition.get(parentKey) ?? 0,
+        createdAt: now,
+        updatedAt: now,
+      });
+      categoryBySlug.set(category.slug, id);
+      nextPosition.set(parentKey, (nextPosition.get(parentKey) ?? 0) + 1);
+      bump("categories");
+    }
+
+    // DEMO-… SKUs: 2 ultrasound (counted), monitor + archived legacy
+    // (archived excluded from stats), centrifuges incl. a dual-category
+    // kit, one uncategorized — exercises every bucket the page renders.
+    const demoProducts = [
+      {
+        name: "Portable Ultrasound X5",
+        slug: "demo-portable-ultrasound-x5",
+        sku: "DEMO-1001",
+        status: "active",
+        cats: ["ultrasound-systems"],
+      },
+      {
+        name: "Cart Ultrasound S3",
+        slug: "demo-cart-ultrasound-s3",
+        sku: "DEMO-1002",
+        status: "active",
+        cats: ["ultrasound-systems"],
+      },
+      {
+        name: "Patient Monitor M7",
+        slug: "demo-patient-monitor-m7",
+        sku: "DEMO-1003",
+        status: "active",
+        cats: ["patient-monitors"],
+      },
+      {
+        name: "Bench Centrifuge C2",
+        slug: "demo-bench-centrifuge-c2",
+        sku: "DEMO-1004",
+        status: "draft",
+        cats: ["centrifuges"],
+      },
+      {
+        name: "Centrifuge Rotor Kit",
+        slug: "demo-centrifuge-rotor-kit",
+        sku: "DEMO-1005",
+        status: "active",
+        cats: ["centrifuges", "lab-equipment"],
+      },
+      {
+        name: "Lab Bench Stand",
+        slug: "demo-lab-bench-stand",
+        sku: "DEMO-1006",
+        status: "active",
+        cats: [],
+      },
+      {
+        name: "Legacy Patient Monitor",
+        slug: "demo-legacy-patient-monitor",
+        sku: "DEMO-1007",
+        status: "archived",
+        cats: ["patient-monitors"],
+      },
+    ] as const;
+    const existingSkus = new Set((await ctx.db.query("products").collect()).map((row) => row.sku));
+    for (const product of demoProducts) {
+      if (existingSkus.has(product.sku)) continue;
+      const categoryIds = product.cats
+        .map((slug) => categoryBySlug.get(slug))
+        .filter((id): id is Id<"categories"> => id !== undefined);
+      await ctx.db.insert("products", {
+        name: product.name,
+        slug: product.slug,
+        sku: product.sku,
+        status: product.status,
+        categoryIds,
+        createdAt: now,
+        updatedAt: now,
+      });
+      bump("products");
     }
 
     const changed =

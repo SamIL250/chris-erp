@@ -58,7 +58,7 @@ describe("auth rate limiting (PH0-20)", () => {
     expect(await attemptSignIn(t, "victim@example.com", "correct-horse-battery")).toBe(
       "TooManyFailedAttempts",
     );
-  });
+  }, 20_000); // 11 auth-store round trips — the default 5s trips under parallel workers
 
   test("unknown accounts are not enumerable through the limiter", async () => {
     const t = setup();
