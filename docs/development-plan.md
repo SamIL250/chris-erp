@@ -34,7 +34,7 @@
 
 | Phase          | Focus                                              | Status         | Tasks   | Gate |
 | -------------- | -------------------------------------------------- | -------------- | ------- | ---- |
-| **Phase 0**    | Foundation (scaffold, auth, RBAC, settings, shell) | 🔨 In progress | 13 / 35 | ☐    |
+| **Phase 0**    | Foundation (scaffold, auth, RBAC, settings, shell) | 🔨 In progress | 16 / 35 | ☐    |
 | **Phase 1**    | Catalog + Inventory core (schema-first)            | ⬜ Not started | 0 / 25  | ☐    |
 | **Phase 2**    | Sales & Procurement (O2C + P2P documents)          | ⬜ Not started | 0 / 29  | ☐    |
 | **Phase 3**    | Finance (double-entry, postings, reports)          | ⬜ Not started | 0 / 17  | ☐    |
@@ -118,15 +118,15 @@ chris-erp/
 
 ### 0.3 App shell & navigation
 
-- [ ] **PH0-12** Admin layout: collapsible sidebar grouped by module (Dashboard, Catalog, Inventory, Sales, Procurement, Finance, Service, Reports, Settings), topbar with search, notification bell, user menu
+- [x] **PH0-12** Admin layout: collapsible sidebar grouped by module (Dashboard, Catalog, Inventory, Sales, Procurement, Finance, Service, Reports, Settings), topbar with search, notification bell, user menu
 - [x] **PH0-13** Route protection middleware: unauthenticated → `(auth)`; storefront vs admin access by role (auth-level done; permission-derived route gating lands with PH0-23)
 - [ ] **PH0-14** Global search box (searches customers/products/documents by phase availability — grows with features)
-- [ ] **PH0-15** Dashboard placeholder page with KPI tiles (values `—` until data exists)
+- [x] **PH0-15** Dashboard placeholder page with KPI tiles (values `—` until data exists)
 - [ ] **PH0-16** Error boundary, 404, loading conventions, toast system wired
 
 ### 0.4 Auth & user management
 
-- [ ] **PH0-17** Convex Auth: email/password + Google OAuth; login, signup, logout, forgot/reset password pages (Untitled UI)
+- [x] **PH0-17** Convex Auth: email/password + Google OAuth; login, signup, logout, forgot/reset password pages (Untitled UI)
 - [ ] **PH0-18** `users` profile table (name, avatar, role, status active/invited/disabled), profile settings page
 - [ ] **PH0-19** Admin: invite user by email → invitee sets password → lands with assigned role
 - [ ] **PH0-20** Session handling, auth rate limiting, security headers
