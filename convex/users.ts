@@ -1,6 +1,7 @@
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { paginationOptsValidator } from "convex/server";
 import { ConvexError, v } from "convex/values";
+import { auditedMutation } from "./_lib/audit";
 import {
   effectiveRoleKeys,
   grantRole,
@@ -11,7 +12,7 @@ import {
   SYSTEM_ROLES,
   type RoleKey,
 } from "./_lib/permissions";
-import { mutation, query } from "./_generated/server";
+import { query } from "./_generated/server";
 
 /**
  * The signed-in user's own profile (null when unauthenticated), plus the
@@ -41,18 +42,29 @@ export const me = query({
  * Self-scoped by design — no `requirePermission` (docs/permissions.md rule 2
  * exempts own-profile/own-session actions; you can always edit yourself).
  */
-export const updateProfile = mutation({
+export const updateProfile = auditedMutation({
+  entity: "users",
+  action: "update",
   args: { name: v.string() },
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
     if (userId === null) {
       throw new Error("Not authenticated");
     }
+    const existing = await ctx.db.get(userId);
     const name = args.name.trim();
     if (name.length < 1 || name.length > 100) {
       throw new ConvexError("Name must be between 1 and 100 characters");
     }
     await ctx.db.patch(userId, { name, updatedAt: Date.now() });
+    return {
+      result: undefined,
+      // No-op saves aren't worth an entry (PH0-26).
+      audit:
+        name === existing?.name
+          ? undefined
+          : { entityId: userId, before: { name: existing?.name }, after: { name } },
+    };
   },
 });
 
@@ -85,11 +97,11 @@ export const list = query({
  *   only an Owner may grant or change roles at all.
  * - You can't change your own role (prevents self-lockout).
  * - `roleKey: null` clears the assignment (the user then has no permissions).
- *
- * TODO(PH0-25): write an auditLog entry ("roles changed") once the audit
- * table lands.
+ * - Audited as `roleChange` with before/after role keys (PH0-26).
  */
-export const assignRole = mutation({
+export const assignRole = auditedMutation({
+  entity: "users",
+  action: "roleChange",
   args: { userId: v.id("users"), roleKey: v.nullable(v.string()) },
   handler: async (ctx, args) => {
     const callerId = await requirePermission(ctx, "users", "edit");
@@ -106,10 +118,16 @@ export const assignRole = mutation({
       throw new ConvexError("Unknown role.");
     }
 
+    const before = await effectiveRoleKeys(ctx, args.userId);
     await grantRole(ctx, {
       userId: args.userId,
       roleKey: args.roleKey as RoleKey | null,
       grantedBy: callerId,
     });
+    const after = await effectiveRoleKeys(ctx, args.userId);
+    return {
+      result: undefined,
+      audit: { entityId: args.userId, before: { roles: before }, after: { roles: after } },
+    };
   },
 });

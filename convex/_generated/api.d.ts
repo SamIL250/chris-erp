@@ -8,8 +8,10 @@
  * @module
  */
 
+import type * as _lib_audit from "../_lib/audit.js";
 import type * as _lib_permissions from "../_lib/permissions.js";
 import type * as _lib_sequences from "../_lib/sequences.js";
+import type * as audit from "../audit.js";
 import type * as auth from "../auth.js";
 import type * as authProviders from "../authProviders.js";
 import type * as authSessions from "../authSessions.js";
@@ -25,8 +27,10 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  "_lib/audit": typeof _lib_audit;
   "_lib/permissions": typeof _lib_permissions;
   "_lib/sequences": typeof _lib_sequences;
+  audit: typeof audit;
   auth: typeof auth;
   authProviders: typeof authProviders;
   authSessions: typeof authSessions;

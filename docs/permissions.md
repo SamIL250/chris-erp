@@ -66,3 +66,8 @@ _When adding a module: add a row here first, then the permission constant, then 
 - **Enforced today**: `invites.create`, `users.list`, `users.assignRole`,
   `roles.list`. New mutations call `requirePermission` from day one;
   PH0-35 verifies the sweep.
+- **Audit entries (rule 2)**: `auditedMutation()` in `convex/_lib/audit.ts`
+  appends the before/after snapshot after the handler succeeds (snapshots are
+  redacted; a thrown handler records nothing); `appendAudit()` covers
+  mutations that don't fit the wrapper. Viewer: `/settings/audit`
+  (`settings.view`).

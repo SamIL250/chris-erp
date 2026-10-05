@@ -34,7 +34,7 @@
 
 | Phase          | Focus                                              | Status         | Tasks   | Gate |
 | -------------- | -------------------------------------------------- | -------------- | ------- | ---- |
-| **Phase 0**    | Foundation (scaffold, auth, RBAC, settings, shell) | 🔨 In progress | 25 / 35 | ☐    |
+| **Phase 0**    | Foundation (scaffold, auth, RBAC, settings, shell) | 🔨 In progress | 26 / 35 | ☐    |
 | **Phase 1**    | Catalog + Inventory core (schema-first)            | ⬜ Not started | 0 / 25  | ☐    |
 | **Phase 2**    | Sales & Procurement (O2C + P2P documents)          | ⬜ Not started | 0 / 29  | ☐    |
 | **Phase 3**    | Finance (double-entry, postings, reports)          | ⬜ Not started | 0 / 17  | ☐    |
@@ -141,7 +141,7 @@ chris-erp/
 
 - [x] **PH0-24** `schema.ts` foundations: `organizations` (single-company config), `users`, `roles`, `settings`, `sequences`, `currencies`, `exchangeRates`, `taxRates`, `taxGroups`, `auditLog`, `notifications`, `files` _(organizations/users/roles had landed in PH0-18/22; added settings, sequences, currencies, exchangeRates, taxRates, taxGroups, auditLog, notifications, files with indexes + design comments; sanity suite tests/platform-tables.test.ts writes/queries every one)_
 - [x] **PH0-25** `nextSequence(name)` document-number generator (INV-, SO-, PO-, QT-, DN-, CR-, JRNL-…) _(convex/_lib/sequences.ts: consume-in-transaction helper + pure `formatSequence` + `peekSequence` preview for the PH0-30 UI + idempotent `ensureDefaultSequences` seeding the canonical 11 (QT-/SO-/DN-/INV-/CR-/PO-/GRN-/PAY-/JRNL-/RMA-/WO-), custom rows never overwritten; tests/sequences.test.ts)_
-- [ ] **PH0-26** `audit()` helper: append-only before/after snapshots, wired into a generic mutation wrapper; **audit log viewer UI** (filter by actor/entity/date)
+- [x] **PH0-26** `audit()` helper: append-only before/after snapshots, wired into a generic mutation wrapper; **audit log viewer UI** (filter by actor/entity/date) _(convex/_lib/audit.ts: `redact()` masks credential-shaped snapshot keys, `appendAudit()` resolves the actor, `auditedMutation()` wraps Convex mutations — handler returns `{result, audit}`, append happens only on success; wired into updateProfile, assignRole, invites.create; viewer at /settings/audit gated by settings.view — actor/entity/date filters, before/after detail dialog; tests/audit.test.ts)_
 - [ ] **PH0-27** File storage: Convex storage upload, signed URLs, image upload component (used later by catalog)
 - [ ] **PH0-28** Notification center: in-app bell + list + read/unread; `notify()` helper for future events
 

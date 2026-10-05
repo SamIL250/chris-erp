@@ -1,8 +1,8 @@
 import { ConvexError, v } from "convex/values";
 import { randomHex, sha256Hex } from "../lib/crypto";
 import { sendEmail } from "../lib/emails";
+import { auditedMutation } from "./_lib/audit";
 import { grantRole, isRoleKey, requirePermission, requireRole } from "./_lib/permissions";
-import { mutation } from "./_generated/server";
 
 /** Invite links are valid for 7 days. */
 const INVITE_TTL_MS = 1000 * 60 * 60 * 24 * 7;
@@ -21,8 +21,11 @@ const EMAIL_PATTERN = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
  * - `role` (PH0-22): optional role granted with the invite. Granting or
  *   changing roles is Owner-only (docs/permissions.md rule 4) — Admin can
  *   invite people without a role and an Owner assigns one later.
+ * - Audited as `invite` (PH0-26).
  */
-export const create = mutation({
+export const create = auditedMutation({
+  entity: "users",
+  action: "invite",
   args: { email: v.string(), name: v.optional(v.string()), role: v.optional(v.string()) },
   handler: async (ctx, args) => {
     const inviterId = await requirePermission(ctx, "users", "create");
@@ -121,6 +124,18 @@ export const create = mutation({
     });
 
     // Dev fallback (no Resend key): hand the link back so the UI can show it.
-    return { sent, ...(sent ? {} : { url }) };
+    return {
+      result: { sent, ...(sent ? {} : { url }) },
+      audit: {
+        entityId: userId,
+        // Re-invite: the profile existed — record what it was.
+        ...(existing !== undefined ? { before: { status: existing.status } } : {}),
+        after: {
+          status: "invited",
+          email,
+          ...(args.role !== undefined ? { role: args.role } : {}),
+        },
+      },
+    };
   },
 });
