@@ -94,10 +94,10 @@ chris-erp/
 **Goal:** A secure, beautiful, empty shell: login, roles, settings, audit — everything other features plug into.
 **Exit criteria:**
 
-- [ ] A new user can sign up, be assigned a role, log in, and sees only permitted nav/actions
-- [ ] Company profile, numbering sequences, base currency, tax rates configurable via UI
-- [ ] Audit log records every mutation performed in the app
-- [ ] Seed script produces demo org + users; CI (typecheck/lint/test) green
+- [x] A new user can sign up, be assigned a role, log in, and sees only permitted nav/actions _(signup/invites/sign-in E2E; role grants notify; nav + route gating fail-closed, unit-tested)_
+- [x] Company profile, numbering sequences, base currency, tax rates configurable via UI _(/settings/company, /settings/sequences, /settings/currencies, /settings/tax — each SSR-verified + mutations exercised over HTTP)_
+- [x] Audit log records every mutation performed in the app _(auditedMutation wrapper; tests/guards.test.ts sweeps every writing mutation — exempt list reasoned + staleness-checked)_
+- [x] Seed script produces demo org + users; CI (typecheck/lint/test) green _(`npm run seed` E2E on dev: 2 rates + 5 invited users, idempotent re-run no-op; ci.yml runs typecheck/lint/format/test/build — all green, 92 tests)_
 
 ### 0.1 Scaffold & tooling
 
