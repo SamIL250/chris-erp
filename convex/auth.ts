@@ -49,6 +49,34 @@ const resetEmail: EmailConfig = {
 };
 
 export const { auth, signIn, signOut, store, isAuthenticated } = convexAuth({
+  /**
+   * Auth rate limiting (PH0-20). The built-in limiter trips after
+   * `maxFailedAttempsPerHour` failed password attempts (per account) or code
+   * verifications (per email) and then refills one attempt every 6 minutes —
+   * enforced inside the auth mutations, so calling the deployment directly
+   * can't bypass it. 10/hour is the library default; kept explicit here so
+   * the value is deliberate and documented.
+   */
+  signIn: { maxFailedAttempsPerHour: 10 },
+  /**
+   * Session handling (PH0-20): absolute lifetime 7 days (re-auth weekly),
+   * idle timeout 24 hours (the refresh token's lifetime — an active tab
+   * slides it forward, a closed laptop over the weekend requires a fresh
+   * sign-in). Both were 30 days by default.
+   */
+  session: {
+    totalDurationMs: 1000 * 60 * 60 * 24 * 7,
+    inactiveDurationMs: 1000 * 60 * 60 * 24,
+  },
+  /**
+   * Access-token lifetime (PH0-20): revoking a session (sign-out, "sign out
+   * other devices", password reset) deletes it server-side, but an access
+   * token already handed out stays valid until ITS expiry — refresh with a
+   * deleted session returns `tokens: null` and signs that device out. This
+   * bounds the revocation lag (default was 60 minutes). The client refreshes
+   * transparently over the same cookies.
+   */
+  jwt: { durationMs: 1000 * 60 * 15 },
   providers: [
     Password({
       /**

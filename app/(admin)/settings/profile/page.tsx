@@ -1,6 +1,6 @@
 "use client";
 
-import { useMutation, useQuery } from "convex/react";
+import { useAction, useMutation, useQuery } from "convex/react";
 import { useState } from "react";
 import { Avatar } from "@/components/base/avatar/avatar";
 import { Badge } from "@/components/base/badges/badges";
@@ -113,6 +113,45 @@ function ProfileForm({ me }: { me: Doc<"users"> }) {
   );
 }
 
+/** Session controls (PH0-20): sign out everywhere but the current device. */
+function SessionsCard() {
+  const revokeOtherSessions = useAction(api.authSessions.revokeOtherSessions);
+  const [revoking, setRevoking] = useState(false);
+
+  return (
+    <Card>
+      <div className="flex flex-col gap-4 p-6">
+        <div>
+          <h2 className="text-primary text-md font-semibold">Sessions</h2>
+          <p className="text-secondary text-sm">
+            Sessions expire after 7 days, or 24 hours of inactivity. Signed in somewhere you
+            don&apos;t recognize? Sign out everywhere else — this device stays signed in.
+          </p>
+        </div>
+        <div>
+          <Button
+            color="secondary"
+            isLoading={revoking}
+            onPress={async () => {
+              setRevoking(true);
+              try {
+                await revokeOtherSessions();
+                toast.success("Signed out of all other devices");
+              } catch (error) {
+                toast.error(toUserMessage(error));
+              } finally {
+                setRevoking(false);
+              }
+            }}
+          >
+            Sign out other devices
+          </Button>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
 /** Profile settings (PH0-18): name, avatar, status, account metadata. */
 export default function ProfilePage() {
   const me = useQuery(api.users.me);
@@ -144,6 +183,7 @@ export default function ProfilePage() {
         description="Your account details and how you appear across the workspace."
       />
       <ProfileForm me={me} />
+      <SessionsCard />
     </div>
   );
 }

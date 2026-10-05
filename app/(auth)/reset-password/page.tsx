@@ -2,6 +2,7 @@
 
 import { useAuthActions } from "@convex-dev/auth/react";
 import { ArrowLeft, X } from "@untitledui/icons";
+import { useAction } from "convex/react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
@@ -9,6 +10,7 @@ import { Button } from "@/components/base/buttons/button";
 import { FeaturedIcon } from "@/components/foundations/featured-icon/featured-icon";
 import { Form, FormAlert, FormInput, useZodForm } from "@/components/ui/form";
 import { Skeleton } from "@/components/ui/skeleton";
+import { api } from "@/convex/_generated/api";
 import { toUserMessage } from "@/lib/errors";
 import { resetPasswordSchema } from "@/lib/schemas/auth";
 import { AuthHeading } from "../auth-heading";
@@ -44,6 +46,7 @@ function ResetPasswordForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { signIn } = useAuthActions();
+  const revokeOtherSessions = useAction(api.authSessions.revokeOtherSessions);
   const methods = useZodForm(resetPasswordSchema, {
     defaultValues: { password: "", confirmPassword: "" },
   });
@@ -69,6 +72,13 @@ function ResetPasswordForm() {
               code,
               newPassword: values.password,
             });
+            // Password reset (PH0-20): kill every session opened with the
+            // old password. Best effort — never block the redirect on it.
+            try {
+              await revokeOtherSessions();
+            } catch {
+              console.warn("Could not revoke other sessions after password reset");
+            }
             // Replace so the one-time code doesn't stay in history.
             router.replace("/dashboard");
             router.refresh();

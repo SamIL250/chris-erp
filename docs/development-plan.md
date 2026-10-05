@@ -34,7 +34,7 @@
 
 | Phase          | Focus                                              | Status         | Tasks   | Gate |
 | -------------- | -------------------------------------------------- | -------------- | ------- | ---- |
-| **Phase 0**    | Foundation (scaffold, auth, RBAC, settings, shell) | 🔨 In progress | 20 / 35 | ☐    |
+| **Phase 0**    | Foundation (scaffold, auth, RBAC, settings, shell) | 🔨 In progress | 21 / 35 | ☐    |
 | **Phase 1**    | Catalog + Inventory core (schema-first)            | ⬜ Not started | 0 / 25  | ☐    |
 | **Phase 2**    | Sales & Procurement (O2C + P2P documents)          | ⬜ Not started | 0 / 29  | ☐    |
 | **Phase 3**    | Finance (double-entry, postings, reports)          | ⬜ Not started | 0 / 17  | ☐    |
@@ -129,7 +129,7 @@ chris-erp/
 - [x] **PH0-17** Convex Auth: email/password + Google OAuth; login, signup, logout, forgot/reset password pages (Untitled UI)
 - [x] **PH0-18** `users` profile table (name, avatar, role, status active/invited/disabled), profile settings page (role display lands with RBAC in PH0-22; avatar upload with file storage in PH0-27)
 - [x] **PH0-19** Admin: invite user by email → invitee sets password → lands with assigned role (role assignment lands with RBAC in PH0-22; without a Resend key the dev link is shown in the invite dialog)
-- [ ] **PH0-20** Session handling, auth rate limiting, security headers
+- [x] **PH0-20** Session handling, auth rate limiting, security headers (7d/24h session policy + 15-min access tokens, `revokeOtherSessions` after password reset & from profile, built-in 10 failed-attempts/hour limiter, CSP/HSTS/etc on every response; plus a proxy workaround for an `@convex-dev/auth` bug that turned auth redirects into blank pages)
 
 ### 0.5 RBAC
 
