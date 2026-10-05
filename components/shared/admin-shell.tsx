@@ -2,21 +2,12 @@
 
 import { useAuthActions } from "@convex-dev/auth/react";
 import {
-  BankNote01,
   Bell01,
   ChevronLeft,
   ChevronRight,
-  Home01,
-  LayersThree01,
   LogOut01,
   Menu01,
-  Package,
-  PresentationChart01,
   SearchSm,
-  Settings01,
-  ShoppingCart01,
-  Tag01,
-  Tool01,
   User01,
 } from "@untitledui/icons";
 import { Button as AriaButton } from "react-aria-components";
@@ -25,14 +16,12 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState, type ReactNode } from "react";
 import { NavList } from "@/components/application/app-navigation/base-components/nav-list";
-import type {
-  NavItemDividerType,
-  NavItemType,
-} from "@/components/application/app-navigation/config";
 import { Avatar } from "@/components/base/avatar/avatar";
 import { AvatarLabelGroup } from "@/components/base/avatar/avatar-label-group";
 import { Button } from "@/components/base/buttons/button";
 import { Dropdown } from "@/components/base/dropdown/dropdown";
+import { CommandPalette } from "@/components/shared/command-palette";
+import { NAV_ITEMS, findActiveUrl } from "@/components/shared/nav-config";
 import {
   Drawer,
   DrawerBody,
@@ -43,40 +32,6 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { api } from "@/convex/_generated/api";
 import { cx } from "@/utils/cx";
-
-/**
- * Admin navigation (PH0-12). Each module is a top-level link for now —
- * child pages (e.g. Catalog → Products) are added as their phases land.
- */
-const NAV_ITEMS: (NavItemType | NavItemDividerType)[] = [
-  { label: "Dashboard", href: "/dashboard", icon: Home01 },
-  { divider: true },
-  { label: "Catalog", href: "/catalog", icon: Package },
-  { label: "Inventory", href: "/inventory", icon: LayersThree01 },
-  { label: "Sales", href: "/sales", icon: Tag01 },
-  { label: "Procurement", href: "/procurement", icon: ShoppingCart01 },
-  { label: "Finance", href: "/finance", icon: BankNote01 },
-  { label: "Service", href: "/service", icon: Tool01 },
-  { label: "Reports", href: "/reports", icon: PresentationChart01 },
-  { divider: true },
-  { label: "Settings", href: "/settings", icon: Settings01 },
-];
-
-/** Best (longest) matching nav href for the current path, so detail pages
- * still highlight their module. */
-function findActiveUrl(pathname: string): string | undefined {
-  let best: string | undefined;
-  const walk = (items: (NavItemType | NavItemDividerType)[]) => {
-    for (const item of items) {
-      if (item.href && (pathname === item.href || pathname.startsWith(`${item.href}/`))) {
-        if (!best || item.href.length > best.length) best = item.href;
-      }
-      if (item.items) walk(item.items);
-    }
-  };
-  walk(NAV_ITEMS);
-  return best;
-}
 
 function BrandMark() {
   return (
@@ -98,6 +53,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
   const me = useQuery(api.users.me);
   const [collapsed, setCollapsed] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
 
   const activeUrl = findActiveUrl(pathname ?? "");
 
@@ -209,10 +165,11 @@ export function AdminShell({ children }: { children: ReactNode }) {
             <BrandMark />
           </Link>
 
-          {/* Global search trigger — wired to the ⌘K palette in PH0-14 */}
+          {/* Global search trigger → ⌘K palette (PH0-14) */}
           <button
             type="button"
             aria-label="Search"
+            onClick={() => setSearchOpen(true)}
             className="border-secondary bg-primary text-tertiary hover:border-border-hover outline-focus-ring hidden h-10 w-64 cursor-pointer items-center gap-2 rounded-lg border px-3 text-sm shadow-xs focus-visible:outline-2 md:flex"
           >
             <SearchSm className="size-4 shrink-0" />
@@ -276,6 +233,9 @@ export function AdminShell({ children }: { children: ReactNode }) {
 
         <main className="flex-1 p-4 sm:p-6">{children}</main>
       </div>
+
+      {/* Global search palette (⌘K) */}
+      <CommandPalette isOpen={searchOpen} onOpenChange={setSearchOpen} />
 
       {/* Mobile navigation drawer */}
       <Drawer isOpen={mobileNavOpen} onOpenChange={setMobileNavOpen}>
