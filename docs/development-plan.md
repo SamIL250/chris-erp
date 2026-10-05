@@ -2,7 +2,7 @@
 
 > **Companion to:** [`erp-research-and-features.md`](./erp-research-and-features.md) (research, decisions, feature priorities)
 > **Stack:** Next.js (App Router) · Convex · Untitled UI (components + icons) · Stripe · Resend · Tailwind v4
-> **Status:** Phase 1 🔄 in progress — category tree + admin UI shipped (2 / 25, Catalog & Inventory)
+> **Status:** Phase 1 🔄 in progress — categories + attribute definitions shipped (3 / 25, Catalog & Inventory)
 > **Last updated:** 2026-10-05
 
 ---
@@ -35,7 +35,7 @@
 | Phase          | Focus                                              | Status         | Tasks   | Gate |
 | -------------- | -------------------------------------------------- | -------------- | ------- | ---- |
 | **Phase 0**    | Foundation (scaffold, auth, RBAC, settings, shell) | ✅ Complete    | 35 / 35 | ☑    |
-| **Phase 1**    | Catalog + Inventory core (schema-first)            | 🔨 In progress | 2 / 25  | ☐    |
+| **Phase 1**    | Catalog + Inventory core (schema-first)            | 🔨 In progress | 3 / 25  | ☐    |
 | **Phase 2**    | Sales & Procurement (O2C + P2P documents)          | ⬜ Not started | 0 / 29  | ☐    |
 | **Phase 3**    | Finance (double-entry, postings, reports)          | ⬜ Not started | 0 / 17  | ☐    |
 | **Phase 4**    | Ecommerce storefront (B2C + B2B portal)            | ⬜ Not started | 0 / 24  | ☐    |
@@ -174,8 +174,8 @@ chris-erp/
 
 - [x] **PH1-01** Category tree: CRUD nested nodes, slug auto + unique, SEO title/description, visibility toggle, manual ordering, move/reparent rules
 - [x] **PH1-02** Category admin UI: tree view + side editor, product counts, "uncategorized" handling
-- [ ] **PH1-03** Attribute definitions: name + type (text, number, select, multi-select, boolean, date) + optional units
-- [ ] **PH1-04** Attribute **sets**: group attributes, assign set(s) to category → products in that category inherit fields
+- [x] **PH1-03** Attribute definitions: name + type (text, number, select, multi-select, boolean, date) + optional units
+- [ ] **PH1-04** Attribute **sets**: group attributes, assign set(s) to category → products in that category inherit fields — _includes the **admin UI** for attribute definitions + sets (one Attributes page): PH1-03 shipped the definitions backend only (scope decision, 2026-10-05)_
 - [ ] **PH1-05** Storefront-ready indexes: category path/products-by-category, attribute filters index
 
 ### 1.2 Product master
@@ -580,8 +580,42 @@ _Move into a phase only via explicit re-prioritization._
 
 **Next up:** PH1-03 — Attribute definitions (name/type/units).
 
-| Date       | Session         | Shipped (task IDs) | Decisions / notes                                                                              | Next up                        |
-| ---------- | --------------- | ------------------ | ---------------------------------------------------------------------------------------------- | ------------------------------ |
-| 2026-10-04 | Plan created    | —                  | Research doc + development plan aligned with scoping decisions                                 | Start Phase 0 (PH0-01…)        |
-| 2026-10-05 | Phase 1 start   | PH1-01             | Category tree backend; global unique slugs, computed paths, guarded moves                      | PH1-02 (category admin UI)     |
-| 2026-10-05 | Phase 1 (cont.) | PH1-02             | Category admin UI + stats; products core landed early (PH1-06 note); demo catalog seed (CT-03) | PH1-03 (attribute definitions) |
+### 2026-10-05 · Attribute definitions (PH1-03)
+
+**Shipped**
+
+- `attributeDefinitions` schema table (name, 6-value type union, optional
+  unit, `options[]`, `by_name` index) + `convex/catalog/attributes.ts`
+  (`list`/`create`/`update`/`remove` — catalog matrix, audited).
+  **Phase 1: 3/25.**
+- Server-side shape rules: unit only on `number` (≤ 50 chars), options
+  only on `select`/`multi_select` (≥ 1 after trimming, ≤ 100 chars each,
+  ≤ 100 total, case-insensitive dedupe, admin order preserved); explicit
+  errors for cross-type payloads. 12-test suite + HTTP E2E (23 checks —
+  normalization, exact RBAC messages, no-op unrecorded, audit snapshots).
+
+**Decisions**
+
+- Scope: backend only per the task text (PH1-16-style tasks say "admin
+  CRUD" when they mean UI); Phase 1 had no attribute-UI task, so **PH1-04
+  was amended to include the Attributes admin page** (definitions + sets
+  together) — user's call.
+- `options[]` ships with the definition even though the task text lists
+  only name/type/units: select types are unusable without their choice
+  list (PH1-07 product editor and PH1-09 variant axes both need it).
+- No slug/key field — identity is the document id; add a machine key only
+  if PH1-05's filter index proves it needs one.
+- `update` is full-form (omitted unit/options clear) matching the
+  category editor; arrays compared element-wise so no-op saves stay
+  unrecorded. Type changes are free-form until PH1-07 stores product
+  values (narrowing may then need a guard). Delete's "still used by a
+  set/product" check noted for PH1-04/PH1-07.
+
+**Next up:** PH1-04 — Attribute sets + the Attributes admin UI.
+
+| Date       | Session         | Shipped (task IDs) | Decisions / notes                                                                                         | Next up                            |
+| ---------- | --------------- | ------------------ | --------------------------------------------------------------------------------------------------------- | ---------------------------------- |
+| 2026-10-04 | Plan created    | —                  | Research doc + development plan aligned with scoping decisions                                            | Start Phase 0 (PH0-01…)            |
+| 2026-10-05 | Phase 1 start   | PH1-01             | Category tree backend; global unique slugs, computed paths, guarded moves                                 | PH1-02 (category admin UI)         |
+| 2026-10-05 | Phase 1 (cont.) | PH1-02             | Category admin UI + stats; products core landed early (PH1-06 note); demo catalog seed (CT-03)            | PH1-03 (attribute definitions)     |
+| 2026-10-05 | Phase 1 (cont.) | PH1-03             | Attribute definitions backend (type/unit/options shape rules); admin UI folded into PH1-04 (plan amended) | PH1-04 (attribute sets + admin UI) |

@@ -80,7 +80,10 @@ _When adding a module: add a row here first, then the permission constant, then 
   `categories.list`/`categories.stats` (catalog.view),
   `categories.create` (catalog.create),
   `categories.update`/`categories.move` (catalog.edit),
-  `categories.remove` (catalog.delete — Sales notably lacks it) (PH1-01).
+  `categories.remove` (catalog.delete — Sales notably lacks it) (PH1-01);
+  `attributes.list` (catalog.view), `attributes.create` (catalog.create),
+  `attributes.update` (catalog.edit), `attributes.remove` (catalog.delete)
+  (PH1-03).
   Self-service by design,
   no RBAC: `users.updateProfile`, `users.setAvatar`, `files.*`
   (uploader-or-settings.edit on remove), `notifications.*` (own rows).

@@ -316,4 +316,34 @@ export default defineSchema({
     .index("by_slug", ["slug"])
     .index("by_sku", ["sku"])
     .index("by_status", ["status"]),
+
+  /**
+   * Attribute definitions (PH1-03): the spec vocabulary products express
+   * themselves with — "Weight" (number, unit kg), "Color" (select with
+   * options), "RoHS compliant" (boolean). PH1-04 groups these into sets,
+   * sets attach to categories, and the product editor (PH1-07) renders
+   * inputs from the set and stores values per product.
+   *
+   * `unit` is meaningful for `number` only; `options` (admin order,
+   * trimmed + deduped) for `select`/`multi_select` only — both enforced in
+   * `convex/catalog/attributes.ts`. `by_name` gives the admin list its
+   * name-ordered scan.
+   */
+  attributeDefinitions: defineTable({
+    name: v.string(),
+    type: v.union(
+      v.literal("text"),
+      v.literal("number"),
+      v.literal("select"),
+      v.literal("multi_select"),
+      v.literal("boolean"),
+      v.literal("date"),
+    ),
+    /** Unit label for number attributes (kg, mm, months); absent otherwise. */
+    unit: v.optional(v.string()),
+    /** Choices for select/multi-select; empty array otherwise. */
+    options: v.array(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_name", ["name"]),
 });
