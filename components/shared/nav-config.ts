@@ -35,6 +35,7 @@ export const NAV_ITEMS: (NavItemType | NavItemDividerType)[] = [
     label: "Settings",
     icon: Settings01,
     items: [
+      { label: "Company", href: "/settings/company" },
       { label: "Users", href: "/users" },
       { label: "Audit log", href: "/settings/audit" },
       { label: "Profile", href: "/settings/profile" },
@@ -57,6 +58,7 @@ export const NAV_MODULES: Record<string, Module> = {
   "/reports": "reports",
   "/users": "users",
   "/settings/audit": "settings",
+  "/settings/company": "settings",
 };
 
 const isDivider = (item: NavItemType | NavItemDividerType): boolean => item.divider === true;

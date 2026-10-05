@@ -23,7 +23,8 @@ export default defineSchema({
     name: v.string(),
     legalName: v.optional(v.string()),
     slug: v.optional(v.string()),
-    logoStorageId: v.optional(v.id("_storage")),
+    /** Uploaded logo (PH0-29, kind "logo") — resolved to a signed URL on read. */
+    logoFileId: v.optional(v.id("files")),
     taxId: v.optional(v.string()),
     email: v.optional(v.string()),
     phone: v.optional(v.string()),
