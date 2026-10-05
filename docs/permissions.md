@@ -76,7 +76,10 @@ _When adding a module: add a row here first, then the permission constant, then 
   `tax.updateRate`/`tax.updateGroup` (settings.edit) (PH0-32);
   `formatting:get` (session-only — renderers everywhere),
   `formatting:update` (settings.edit) (PH0-33); `seed.seed`
-  (settings.create + Owner — rule 4, grants roles) (PH0-34).
+  (settings.create + Owner — rule 4, grants roles) (PH0-34);
+  `categories.list` (catalog.view), `categories.create` (catalog.create),
+  `categories.update`/`categories.move` (catalog.edit),
+  `categories.remove` (catalog.delete — Sales notably lacks it) (PH1-01).
   Self-service by design,
   no RBAC: `users.updateProfile`, `users.setAvatar`, `files.*`
   (uploader-or-settings.edit on remove), `notifications.*` (own rows).

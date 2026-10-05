@@ -23,6 +23,20 @@ import { describe, expect, test } from "vitest";
 
 const CONVEX_DIR = join(fileURLToPath(new URL("..", import.meta.url)), "convex");
 
+/** Recurse domain folders (PH1+ `convex/catalog/…`), skipping `_…` helpers. */
+function listSourceFiles(dir: string): string[] {
+  const files: string[] = [];
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    if (entry.isDirectory()) {
+      if (entry.name.startsWith("_")) continue; // _generated, _lib
+      files.push(...listSourceFiles(join(dir, entry.name)));
+    } else if (entry.name.endsWith(".ts")) {
+      files.push(join(dir, entry.name));
+    }
+  }
+  return files;
+}
+
 /**
  * Mutations that write rows WITHOUT an audit entry, by design. Every key
  * must match an existing mutation (stale entries fail the sweep).
@@ -41,14 +55,12 @@ interface MutationInfo {
 }
 
 function collectMutations(): MutationInfo[] {
-  const files = readdirSync(CONVEX_DIR)
-    .filter((file) => file.endsWith(".ts"))
-    .sort();
+  const files = listSourceFiles(CONVEX_DIR).sort();
   const mutations: MutationInfo[] = [];
 
   for (const file of files) {
-    const source = readFileSync(join(CONVEX_DIR, file), "utf8");
-    const moduleName = file.replace(/\.ts$/, "");
+    const source = readFileSync(file, "utf8");
+    const moduleName = file.slice(CONVEX_DIR.length + 1).replace(/\.ts$/, "");
     // Each exported mutation starts a new top-level chunk.
     for (const chunk of source.split(/(?=\nexport const )/)) {
       const match = chunk.match(/export const (\w+) = (auditedMutation|mutation)\(\{/);
@@ -74,6 +86,8 @@ describe("mutation sweep (PH0-35)", () => {
     expect(mutations.length).toBeGreaterThanOrEqual(15);
     expect(mutations.map((m) => m.id)).toContain("seed:seed");
     expect(mutations.map((m) => m.id)).toContain("tax:createRate");
+    // Domain-folder mutations (PH1+) must be swept too — recursion check.
+    expect(mutations.map((m) => m.id)).toContain("catalog/categories:create");
   });
 
   test("every mutation gates identity/permission (rule 1)", () => {

@@ -2,7 +2,7 @@
 
 > **Companion to:** [`erp-research-and-features.md`](./erp-research-and-features.md) (research, decisions, feature priorities)
 > **Stack:** Next.js (App Router) · Convex · Untitled UI (components + icons) · Stripe · Resend · Tailwind v4
-> **Status:** Phase 0 ✅ complete — ready for Phase 1 (Catalog & Inventory)
+> **Status:** Phase 1 🔄 in progress — category tree shipped (1 / 25, Catalog & Inventory)
 > **Last updated:** 2026-10-05
 
 ---
@@ -35,7 +35,7 @@
 | Phase          | Focus                                              | Status         | Tasks   | Gate |
 | -------------- | -------------------------------------------------- | -------------- | ------- | ---- |
 | **Phase 0**    | Foundation (scaffold, auth, RBAC, settings, shell) | ✅ Complete    | 35 / 35 | ☑    |
-| **Phase 1**    | Catalog + Inventory core (schema-first)            | ⬜ Not started | 0 / 25  | ☐    |
+| **Phase 1**    | Catalog + Inventory core (schema-first)            | 🔨 In progress | 1 / 25  | ☐    |
 | **Phase 2**    | Sales & Procurement (O2C + P2P documents)          | ⬜ Not started | 0 / 29  | ☐    |
 | **Phase 3**    | Finance (double-entry, postings, reports)          | ⬜ Not started | 0 / 17  | ☐    |
 | **Phase 4**    | Ecommerce storefront (B2C + B2B portal)            | ⬜ Not started | 0 / 24  | ☐    |
@@ -172,7 +172,7 @@ chris-erp/
 
 ### 1.1 Categories & attributes
 
-- [ ] **PH1-01** Category tree: CRUD nested nodes, slug auto + unique, SEO title/description, visibility toggle, manual ordering, move/reparent rules
+- [x] **PH1-01** Category tree: CRUD nested nodes, slug auto + unique, SEO title/description, visibility toggle, manual ordering, move/reparent rules
 - [ ] **PH1-02** Category admin UI: tree view + side editor, product counts, "uncategorized" handling
 - [ ] **PH1-03** Attribute definitions: name + type (text, number, select, multi-select, boolean, date) + optional units
 - [ ] **PH1-04** Attribute **sets**: group attributes, assign set(s) to category → products in that category inherit fields
@@ -517,6 +517,34 @@ _Move into a phase only via explicit re-prioritization._
 
 **Next up:** Phase 1 — Catalog & Inventory core (schema-first), PH1-01.
 
-| Date       | Session      | Shipped (task IDs) | Decisions / notes                                              | Next up                 |
-| ---------- | ------------ | ------------------ | -------------------------------------------------------------- | ----------------------- |
-| 2026-10-04 | Plan created | —                  | Research doc + development plan aligned with scoping decisions | Start Phase 0 (PH0-01…) |
+### 2026-10-05 · Phase 1 kick-off (PH1-01)
+
+**Shipped**
+
+- Category tree backend: `convex/catalog/categories.ts`
+  (`list`/`create`/`update`/`move`/`remove`) + `categories` schema table
+  (adjacency list, `by_slug` + `by_parent_position` indexes), shared
+  `lib/slug.ts` helper, and the PH0-35 sweep now recurses into domain
+  folders (`convex/catalog/…`). **Phase 1: 1/25.**
+
+**Decisions**
+
+- Slugs are globally unique: omitted → derived from the name with a
+  `-2/-3…` suffix on collision; provided → normalized, errors on
+  collision. `update` keeps the slug when it's omitted (renames never
+  change URLs); `""` re-derives from the current name.
+- Depth/paths are computed on read — never stored — so reparents can't
+  leave stale breadcrumbs. Max depth 6 (root = 1); `move` rejects cycles
+  and deep-subtree violations, clamps position, and renumbers every
+  touched sibling set 0..n-1 in the same transaction.
+- `list` returns the whole tree unpaginated — bounded config data like
+  sequences/taxRates (pagination would break tree assembly).
+- Delete is blocked while subcategories exist; the products-reference
+  check lands with PH1-06.
+
+**Next up:** PH1-02 — Category admin UI (tree view + side editor).
+
+| Date       | Session       | Shipped (task IDs) | Decisions / notes                                                         | Next up                    |
+| ---------- | ------------- | ------------------ | ------------------------------------------------------------------------- | -------------------------- |
+| 2026-10-04 | Plan created  | —                  | Research doc + development plan aligned with scoping decisions            | Start Phase 0 (PH0-01…)    |
+| 2026-10-05 | Phase 1 start | PH1-01             | Category tree backend; global unique slugs, computed paths, guarded moves | PH1-02 (category admin UI) |

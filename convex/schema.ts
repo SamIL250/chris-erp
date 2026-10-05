@@ -267,4 +267,30 @@ export default defineSchema({
   })
     .index("by_kind", ["kind"])
     .index("by_uploadedBy", ["uploadedBy"]),
+
+  /**
+   * Category tree (PH1-01): adjacency list — `parentId` (absent = root) plus
+   * manual ordering via `position` (0..n-1 unique per sibling set, maintained
+   * by the mutations). Slugs are GLOBALLY unique (storefront URLs are
+   * slug-based); breadcrumb paths are computed on read — never stored, so a
+   * reparent can't leave stale paths behind. `visible` gates the storefront
+   * (Phase 4); product counts derive from `products.categoryIds` (PH1-06).
+   */
+  categories: defineTable({
+    name: v.string(),
+    slug: v.string(),
+    parentId: v.optional(v.id("categories")),
+    description: v.optional(v.string()),
+    seoTitle: v.optional(v.string()),
+    seoDescription: v.optional(v.string()),
+    visible: v.boolean(),
+    /** Manual order within the sibling set (parent's children + roots). */
+    position: v.number(),
+    /** Storefront card image (PH4-02) — schema-first, UI lands later. */
+    imageFileId: v.optional(v.id("files")),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_slug", ["slug"])
+    .index("by_parent_position", ["parentId", "position"]),
 });
