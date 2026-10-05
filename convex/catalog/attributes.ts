@@ -2,7 +2,7 @@ import { ConvexError, v } from "convex/values";
 import { auditedMutation } from "../_lib/audit";
 import { requirePermission } from "../_lib/permissions";
 import { query, type MutationCtx } from "../_generated/server";
-import type { Doc } from "../_generated/dataModel";
+import type { Doc, Id } from "../_generated/dataModel";
 
 /**
  * Attribute definitions (PH1-03): name + type (text, number, select,
@@ -117,6 +117,37 @@ export const list = query({
   },
 });
 
+/**
+ * Effective attributes for products in `categoryId` (PH1-04 inheritance,
+ * consumed by the PH1-07 product editor and spec tables): the union of
+ * every set covering the category — set name order first, then each set's
+ * own attribute order, deduplicated (first occurrence wins). Definitions
+ * are returned as full rows so the caller can render inputs directly.
+ */
+export const forCategory = query({
+  args: { categoryId: v.id("categories") },
+  handler: async (ctx, args) => {
+    await requirePermission(ctx, "catalog", "view");
+    if ((await ctx.db.get(args.categoryId)) === null) {
+      throw new ConvexError("This category no longer exists.");
+    }
+    const sets = await ctx.db.query("attributeSets").withIndex("by_name").order("asc").collect();
+
+    const ordered: Id<"attributeDefinitions">[] = [];
+    const seen = new Set<string>();
+    for (const set of sets) {
+      if (!set.categoryIds.includes(args.categoryId)) continue;
+      for (const id of set.attributeIds) {
+        if (seen.has(id)) continue;
+        seen.add(id);
+        ordered.push(id);
+      }
+    }
+    const rows = await Promise.all(ordered.map((id) => ctx.db.get(id)));
+    return rows.filter((row): row is Doc<"attributeDefinitions"> => row !== null);
+  },
+});
+
 export const create = auditedMutation({
   entity: "attributeDefinitions",
   action: "create",
@@ -216,8 +247,16 @@ export const remove = auditedMutation({
     if (row === undefined) {
       throw new ConvexError("This attribute no longer exists.");
     }
-    // Reference check ("still used by a set / a product") lands with
-    // PH1-04/PH1-07 — the tables that could reference it don't exist yet.
+    // PH1-04's reference check: definitions group into sets. Product value
+    // references follow with PH1-07 (no value storage exists yet).
+    const sets = await ctx.db.query("attributeSets").collect();
+    const usedBy = sets.filter((set) => set.attributeIds.includes(args.id));
+    if (usedBy.length > 0) {
+      const count = usedBy.length;
+      throw new ConvexError(
+        `This attribute is used by ${count} attribute set${count === 1 ? "" : "s"} — remove it there first.`,
+      );
+    }
     await ctx.db.delete(args.id);
     return {
       result: undefined,

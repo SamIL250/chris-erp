@@ -346,4 +346,27 @@ export default defineSchema({
     createdAt: v.number(),
     updatedAt: v.number(),
   }).index("by_name", ["name"]),
+
+  /**
+   * Attribute sets (PH1-04): named groups of definitions that categories
+   * opt into — products in those categories inherit the union of every
+   * covering set's attributes (PH1-07 renders inputs from it).
+   *
+   * Assignment lives on the SET (single-document edits → one audit
+   * snapshot, and deleting a set takes its assignments with it — categories
+   * never point at sets, so there is nothing to clean up). `by_category`
+   * (Convex array index) serves the "sets covering this category" lookup;
+   * `by_name` orders the admin list.
+   */
+  attributeSets: defineTable({
+    name: v.string(),
+    /** Definitions this set contributes, in display order (deduped). */
+    attributeIds: v.array(v.id("attributeDefinitions")),
+    /** Categories this set applies to. */
+    categoryIds: v.array(v.id("categories")),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_name", ["name"])
+    .index("by_category", ["categoryIds"]),
 });

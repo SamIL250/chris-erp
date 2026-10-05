@@ -2,7 +2,7 @@
 
 > **Companion to:** [`erp-research-and-features.md`](./erp-research-and-features.md) (research, decisions, feature priorities)
 > **Stack:** Next.js (App Router) · Convex · Untitled UI (components + icons) · Stripe · Resend · Tailwind v4
-> **Status:** Phase 1 🔄 in progress — categories + attribute definitions shipped (3 / 25, Catalog & Inventory)
+> **Status:** Phase 1 🔄 in progress — attribute sets + Attributes admin UI shipped (4 / 25, Catalog & Inventory)
 > **Last updated:** 2026-10-05
 
 ---
@@ -35,7 +35,7 @@
 | Phase          | Focus                                              | Status         | Tasks   | Gate |
 | -------------- | -------------------------------------------------- | -------------- | ------- | ---- |
 | **Phase 0**    | Foundation (scaffold, auth, RBAC, settings, shell) | ✅ Complete    | 35 / 35 | ☑    |
-| **Phase 1**    | Catalog + Inventory core (schema-first)            | 🔨 In progress | 3 / 25  | ☐    |
+| **Phase 1**    | Catalog + Inventory core (schema-first)            | 🔨 In progress | 4 / 25  | ☐    |
 | **Phase 2**    | Sales & Procurement (O2C + P2P documents)          | ⬜ Not started | 0 / 29  | ☐    |
 | **Phase 3**    | Finance (double-entry, postings, reports)          | ⬜ Not started | 0 / 17  | ☐    |
 | **Phase 4**    | Ecommerce storefront (B2C + B2B portal)            | ⬜ Not started | 0 / 24  | ☐    |
@@ -175,13 +175,13 @@ chris-erp/
 - [x] **PH1-01** Category tree: CRUD nested nodes, slug auto + unique, SEO title/description, visibility toggle, manual ordering, move/reparent rules
 - [x] **PH1-02** Category admin UI: tree view + side editor, product counts, "uncategorized" handling
 - [x] **PH1-03** Attribute definitions: name + type (text, number, select, multi-select, boolean, date) + optional units
-- [ ] **PH1-04** Attribute **sets**: group attributes, assign set(s) to category → products in that category inherit fields — _includes the **admin UI** for attribute definitions + sets (one Attributes page): PH1-03 shipped the definitions backend only (scope decision, 2026-10-05)_
+- [x] **PH1-04** Attribute **sets**: group attributes, assign set(s) to category → products in that category inherit fields — _includes the **admin UI** for attribute definitions + sets (one Attributes page): PH1-03 shipped the definitions backend only (scope decision, 2026-10-05)_ — shipped 2026-10-05: `attributeSets` table + CRUD, `attributes.forCategory` inheritance resolver, definitions delete guard, `/catalog/attributes` page + sidebar group
 - [ ] **PH1-05** Storefront-ready indexes: category path/products-by-category, attribute filters index
 
 ### 1.2 Product master
 
 - [ ] **PH1-06** `products` table: name, slug, SKU, barcode, brand, short/long description (rich), status (draft/active/archived), taxCategory, track flags, warranty/shelf-life fields, UoM, images[], categoryIds[], attributeSetIds[] — _core identity/lifecycle fields (name, slug, SKU, status, categoryIds + indexes) + the table itself landed early with PH1-02 because its counts/uncategorized stats read it; this task adds the remaining fields and the SKU rules_
-- [ ] **PH1-07** Product create/edit page: sections (Basic, Pricing, Attributes [dynamic from set], Inventory/Tracking, Media, SEO), autosave draft, validation
+- [ ] **PH1-07** Product create/edit page: sections (Basic, Pricing, Attributes [dynamic from set — `attributes.forCategory` resolver shipped with PH1-04], Inventory/Tracking, Media, SEO), autosave draft, validation
 - [ ] **PH1-08** Product list: reactive table — filter by category/brand/status/flags, search by name/SKU/barcode, bulk status change, column sort
 - [ ] **PH1-09** Variants: option axes (from set attributes e.g. color/config) → variant matrix, per-variant SKU/price/barcode/track flags; product-level defaults fill variants
 - [ ] **PH1-10** Pricing fields: `listPrice`, `costPrice` (display only — true moving average cost computed in inventory/finance), margin % shown to staff roles
@@ -613,9 +613,62 @@ _Move into a phase only via explicit re-prioritization._
 
 **Next up:** PH1-04 — Attribute sets + the Attributes admin UI.
 
+### 2026-10-05 · Phase 1 (PH1-04)
+
+**Shipped**
+
+- `attributeSets` table (name, ordered `attributeIds`, `categoryIds`,
+  `by_name` + `by_category` array index) + `convex/catalog/attributeSets.ts`
+  (list/create/update/remove): names 1-100 trimmed, id lists deduped
+  first-wins with existence checks, full-form update (omitted lists clear)
+  and element-wise no-op detection so unchanged saves record nothing,
+  catalog permission matrix, every write audited.
+- `attributes.forCategory` (catalog.view) — the inheritance resolver:
+  union of every set covering the category, set-name order then each set's
+  own attribute order, deduped, returned as full definition rows for the
+  PH1-07 product editor; unknown category → clear error.
+- `attributes.remove` now runs PH1-03's promised reference check: blocked
+  while any set lists the definition ("used by N attribute set(s) — remove
+  it there first"), freed once the set drops it.
+- **Attributes admin UI**: `/catalog/attributes` — Definitions card (name,
+  option count, type badge) + Attribute sets card (attribute/category
+  counts) + persistent side panel (create/edit; view-only roles get a
+  read-only facts panel; two-step delete; type picker shows unit only for
+  number and the options textarea only for select family). Sidebar Catalog
+  became a group (Categories, Attributes) following the Settings pattern,
+  `NAV_MODULES` keys added for both children.
+- `lib/schemas/attributes.ts` zod (name/type/unit/one-per-line options)
+  with `ATTRIBUTE_TYPES` + labels shared by form and lists; seed (CT-03)
+  adds Weight (number/kg), Color (select: Black/Silver), Dimensions (text)
+  grouped as "Physical specs" → ultrasound-systems — idempotent re-run.
+- Verified: tsc/lint/format green, **123 tests / 20 files** (+8), HTTP
+  E2E 30 checks (seed idempotency, inheritance order + dedupe, reference
+  guard round trip, no-op unrecorded, exact RBAC messages, audit
+  snapshots) + SSR 200 / anon → login.
+
+**Decisions**
+
+- **Assignment lives on the SET** (`attributeSets.categoryIds`), not on
+  categories: single-document edits give one clean audit snapshot, deleting
+  a set takes its assignments with it (no orphan cleanup — categories never
+  point at sets), and `by_category` serves the covering-sets lookup. It also
+  avoids adding a required field to existing category documents (Convex
+  validates reads → old rows would break until backfilled).
+- Inheritance order: set name order → the set's own `attributeIds` order,
+  first-wins dedupe. The panel's checkbox lists (definitions in name order)
+  are the display order — reordering UI can come later if a task asks.
+- Sidebar: Catalog grew children once it had 2+ pages (the flat `/catalog`
+  link was a placeholder until Products takes the index in PH1-08 — the
+  `/catalog` → Categories redirect stays).
+- `forCategory` resolves a single category id; if PH1-07 needs one call for
+  multi-category products it widens then (bounded config data either way).
+
+**Next up:** PH1-05 — storefront-ready indexes.
+
 | Date       | Session         | Shipped (task IDs) | Decisions / notes                                                                                         | Next up                            |
 | ---------- | --------------- | ------------------ | --------------------------------------------------------------------------------------------------------- | ---------------------------------- |
 | 2026-10-04 | Plan created    | —                  | Research doc + development plan aligned with scoping decisions                                            | Start Phase 0 (PH0-01…)            |
 | 2026-10-05 | Phase 1 start   | PH1-01             | Category tree backend; global unique slugs, computed paths, guarded moves                                 | PH1-02 (category admin UI)         |
 | 2026-10-05 | Phase 1 (cont.) | PH1-02             | Category admin UI + stats; products core landed early (PH1-06 note); demo catalog seed (CT-03)            | PH1-03 (attribute definitions)     |
 | 2026-10-05 | Phase 1 (cont.) | PH1-03             | Attribute definitions backend (type/unit/options shape rules); admin UI folded into PH1-04 (plan amended) | PH1-04 (attribute sets + admin UI) |
+| 2026-10-05 | Phase 1 (cont.) | PH1-04             | Attribute sets + `forCategory` inheritance resolver + Attributes admin UI; definitions delete guard       | PH1-05 (storefront indexes)        |

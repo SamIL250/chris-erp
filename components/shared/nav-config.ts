@@ -16,14 +16,22 @@ import type {
 import type { Module } from "@/lib/permissions";
 
 /**
- * Admin navigation (PH0-12). Each module is a top-level link for now — child
- * pages (e.g. Catalog → Products) are added as their phases land.
- * Shared by the admin shell sidebar and the ⌘K search palette (PH0-14).
+ * Admin navigation (PH0-12). Each module is a top-level link until it has
+ * child pages (Catalog grew Categories/Attributes in PH1-04; more to come
+ * as their phases land). Shared by the admin shell sidebar and the ⌘K
+ * search palette (PH0-14).
  */
 export const NAV_ITEMS: (NavItemType | NavItemDividerType)[] = [
   { label: "Dashboard", href: "/dashboard", icon: Home01 },
   { divider: true },
-  { label: "Catalog", href: "/catalog", icon: Package },
+  {
+    label: "Catalog",
+    icon: Package,
+    items: [
+      { label: "Categories", href: "/catalog/categories" },
+      { label: "Attributes", href: "/catalog/attributes" },
+    ],
+  },
   { label: "Inventory", href: "/inventory", icon: LayersThree01 },
   { label: "Sales", href: "/sales", icon: Tag01 },
   { label: "Procurement", href: "/procurement", icon: ShoppingCart01 },
@@ -54,6 +62,8 @@ export const NAV_ITEMS: (NavItemType | NavItemDividerType)[] = [
  */
 export const NAV_MODULES: Record<string, Module> = {
   "/catalog": "catalog",
+  "/catalog/categories": "catalog",
+  "/catalog/attributes": "catalog",
   "/inventory": "inventory",
   "/sales": "sales",
   "/procurement": "procurement",

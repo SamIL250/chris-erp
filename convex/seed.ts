@@ -270,6 +270,53 @@ export const seed = auditedMutation({
       bump("products");
     }
 
+    // 7. Demo attributes (CT-03) — three definitions grouped into a set the
+    //    ultrasound category inherits, so the Attributes page and
+    //    `attributes:forCategory` have real content on a fresh seed.
+    const demoDefinitions: {
+      name: string;
+      type: "text" | "number" | "select" | "multi_select" | "boolean" | "date";
+      unit?: string;
+      options?: string[];
+    }[] = [
+      { name: "Weight", type: "number", unit: "kg" },
+      { name: "Color", type: "select", options: ["Black", "Silver"] },
+      { name: "Dimensions", type: "text" },
+    ];
+    const definitionByName = new Map(
+      (await ctx.db.query("attributeDefinitions").collect()).map((row) => [row.name, row._id]),
+    );
+    for (const definition of demoDefinitions) {
+      if (definitionByName.has(definition.name)) continue;
+      const id = await ctx.db.insert("attributeDefinitions", {
+        name: definition.name,
+        type: definition.type,
+        unit: definition.unit,
+        options: definition.options ?? [],
+        createdAt: now,
+        updatedAt: now,
+      });
+      definitionByName.set(definition.name, id);
+      bump("attributeDefinitions");
+    }
+    const demoSetAttributes = (["Weight", "Color", "Dimensions"] as const)
+      .map((name) => definitionByName.get(name))
+      .filter((id): id is Id<"attributeDefinitions"> => id !== undefined);
+    const demoSetExists = (await ctx.db.query("attributeSets").collect()).some(
+      (row) => row.name === "Physical specs",
+    );
+    if (!demoSetExists) {
+      const demoCategory = categoryBySlug.get("ultrasound-systems");
+      await ctx.db.insert("attributeSets", {
+        name: "Physical specs",
+        attributeIds: demoSetAttributes,
+        categoryIds: demoCategory === undefined ? [] : [demoCategory],
+        createdAt: now,
+        updatedAt: now,
+      });
+      bump("attributeSets");
+    }
+
     const changed =
       Object.values(created).reduce((total, count) => total + count, 0) > 0 ||
       invitedEmails.length > 0;

@@ -109,6 +109,8 @@ describe("seed (PH0-34)", () => {
       users: SYSTEM_ROLES.length,
       categories: 5,
       products: 7,
+      attributeDefinitions: 3,
+      attributeSets: 1,
     });
     expect(first.invites).toHaveLength(SYSTEM_ROLES.length);
     for (const invite of first.invites) {
@@ -206,6 +208,8 @@ describe("seed (PH0-34)", () => {
       roleGrants: 1, // accountant only
       categories: 5, // demo tree — nothing pre-existed
       products: 7,
+      attributeDefinitions: 3, // demo attributes + set
+      attributeSets: 1,
     });
     expect(result.invites.map((invite) => invite.email)).toEqual([
       "admin@example.com",
