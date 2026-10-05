@@ -9,6 +9,7 @@
  */
 
 import type * as _lib_audit from "../_lib/audit.js";
+import type * as _lib_invites from "../_lib/invites.js";
 import type * as _lib_notifications from "../_lib/notifications.js";
 import type * as _lib_permissions from "../_lib/permissions.js";
 import type * as _lib_sequences from "../_lib/sequences.js";
@@ -24,6 +25,7 @@ import type * as invites from "../invites.js";
 import type * as notifications from "../notifications.js";
 import type * as organization from "../organization.js";
 import type * as roles from "../roles.js";
+import type * as seed from "../seed.js";
 import type * as sequences from "../sequences.js";
 import type * as tax from "../tax.js";
 import type * as users from "../users.js";
@@ -36,6 +38,7 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   "_lib/audit": typeof _lib_audit;
+  "_lib/invites": typeof _lib_invites;
   "_lib/notifications": typeof _lib_notifications;
   "_lib/permissions": typeof _lib_permissions;
   "_lib/sequences": typeof _lib_sequences;
@@ -51,6 +54,7 @@ declare const fullApi: ApiFromModules<{
   notifications: typeof notifications;
   organization: typeof organization;
   roles: typeof roles;
+  seed: typeof seed;
   sequences: typeof sequences;
   tax: typeof tax;
   users: typeof users;

@@ -34,7 +34,7 @@
 
 | Phase          | Focus                                              | Status         | Tasks   | Gate |
 | -------------- | -------------------------------------------------- | -------------- | ------- | ---- |
-| **Phase 0**    | Foundation (scaffold, auth, RBAC, settings, shell) | 🔨 In progress | 33 / 35 | ☐    |
+| **Phase 0**    | Foundation (scaffold, auth, RBAC, settings, shell) | 🔨 In progress | 34 / 35 | ☐    |
 | **Phase 1**    | Catalog + Inventory core (schema-first)            | ⬜ Not started | 0 / 25  | ☐    |
 | **Phase 2**    | Sales & Procurement (O2C + P2P documents)          | ⬜ Not started | 0 / 29  | ☐    |
 | **Phase 3**    | Finance (double-entry, postings, reports)          | ⬜ Not started | 0 / 17  | ☐    |
@@ -155,7 +155,7 @@ chris-erp/
 
 ### 0.8 Seed & quality
 
-- [ ] **PH0-34** Seed script: demo org, one user per role, currencies, tax rates, sequences — idempotent
+- [x] **PH0-34** Seed script: demo org, one user per role, currencies, tax rates, sequences — idempotent _(convex/seed.ts: Owner-only (settings.create first, then requireRole → rule 4 since seeding grants roles); strictly additive — org only while NONE exists, currencies by missing code, tax rates by missing name, 11 default sequences, one invited user per SYSTEM_ROLES key `<role>@example.com` + role grant via shared `convex/_lib/invites.ts` `inviteUser` extracted from invites.create — existing users get a role only when they have none, disabled accounts untouched; invite URLs ONLY in the result; audit one summary entry, skipped entirely when nothing changed; scripts/seed.mjs `npm run seed` signs in as the owner then calls seed:seed; tests/seed.test.ts incl. no-clobber + secret-free audit)_
 - [ ] **PH0-35** Permission + audit tests green in CI; mutation helper coverage for future code
 
 ---

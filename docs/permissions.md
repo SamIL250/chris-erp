@@ -75,7 +75,8 @@ _When adding a module: add a row here first, then the permission constant, then 
   `tax.createRate`/`tax.createGroup` (settings.create),
   `tax.updateRate`/`tax.updateGroup` (settings.edit) (PH0-32);
   `formatting:get` (session-only — renderers everywhere),
-  `formatting:update` (settings.edit) (PH0-33).
+  `formatting:update` (settings.edit) (PH0-33); `seed.seed`
+  (settings.create + Owner — rule 4, grants roles) (PH0-34).
   Self-service by design,
   no RBAC: `users.updateProfile`, `users.setAvatar`, `files.*`
   (uploader-or-settings.edit on remove), `notifications.*` (own rows).

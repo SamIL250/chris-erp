@@ -13,7 +13,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "convex:dev": "convex dev",
-    "convex:deploy": "convex deploy"
+    "convex:deploy": "convex deploy",
+    "seed": "node scripts/seed.mjs"
   },
   "dependencies": {
     "@auth/core": "^0.41.1",
