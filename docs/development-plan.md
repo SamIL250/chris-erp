@@ -34,7 +34,7 @@
 
 | Phase          | Focus                                              | Status         | Tasks   | Gate |
 | -------------- | -------------------------------------------------- | -------------- | ------- | ---- |
-| **Phase 0**    | Foundation (scaffold, auth, RBAC, settings, shell) | 🔨 In progress | 17 / 35 | ☐    |
+| **Phase 0**    | Foundation (scaffold, auth, RBAC, settings, shell) | 🔨 In progress | 18 / 35 | ☐    |
 | **Phase 1**    | Catalog + Inventory core (schema-first)            | ⬜ Not started | 0 / 25  | ☐    |
 | **Phase 2**    | Sales & Procurement (O2C + P2P documents)          | ⬜ Not started | 0 / 29  | ☐    |
 | **Phase 3**    | Finance (double-entry, postings, reports)          | ⬜ Not started | 0 / 17  | ☐    |
@@ -122,7 +122,7 @@ chris-erp/
 - [x] **PH0-13** Route protection middleware: unauthenticated → `(auth)`; storefront vs admin access by role (auth-level done; permission-derived route gating lands with PH0-23)
 - [x] **PH0-14** Global search box (searches customers/products/documents by phase availability — grows with features)
 - [x] **PH0-15** Dashboard placeholder page with KPI tiles (values `—` until data exists)
-- [ ] **PH0-16** Error boundary, 404, loading conventions, toast system wired
+- [x] **PH0-16** Error boundary, 404, loading conventions, toast system wired
 
 ### 0.4 Auth & user management
 
