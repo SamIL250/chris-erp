@@ -64,8 +64,15 @@ _When adding a module: add a row here first, then the permission constant, then 
 - **UI**: role select in the invite dialog, role badges on `/users`, role on
   the profile page; per-row role editing + `useCan()` gating arrive with PH0-23.
 - **Enforced today**: `invites.create`, `users.list`, `users.assignRole`,
-  `roles.list`. New mutations call `requirePermission` from day one;
-  PH0-35 verifies the sweep.
+  `roles.list` (PH0-22); `audit:list` (settings.view, PH0-26);
+  `organization.update` (settings.edit), `organization:get` (session-only —
+  every document renderer needs the letterhead), `sequences.list`
+  (settings.view), `sequences.ensureDefaults` (settings.create),
+  `sequences.update` (settings.edit) (PH0-29/30). Self-service by design,
+  no RBAC: `users.updateProfile`, `users.setAvatar`, `files.*`
+  (uploader-or-settings.edit on remove), `notifications.*` (own rows).
+  New mutations call `requirePermission` from day one; PH0-35 verifies the
+  sweep.
 - **Audit entries (rule 2)**: `auditedMutation()` in `convex/_lib/audit.ts`
   appends the before/after snapshot after the handler succeeds (snapshots are
   redacted; a thrown handler records nothing); `appendAudit()` covers

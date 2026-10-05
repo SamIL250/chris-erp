@@ -22,6 +22,7 @@ import type * as invites from "../invites.js";
 import type * as notifications from "../notifications.js";
 import type * as organization from "../organization.js";
 import type * as roles from "../roles.js";
+import type * as sequences from "../sequences.js";
 import type * as users from "../users.js";
 
 import type {
@@ -45,6 +46,7 @@ declare const fullApi: ApiFromModules<{
   notifications: typeof notifications;
   organization: typeof organization;
   roles: typeof roles;
+  sequences: typeof sequences;
   users: typeof users;
 }>;
 

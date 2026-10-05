@@ -34,7 +34,7 @@
 
 | Phase          | Focus                                              | Status         | Tasks   | Gate |
 | -------------- | -------------------------------------------------- | -------------- | ------- | ---- |
-| **Phase 0**    | Foundation (scaffold, auth, RBAC, settings, shell) | 🔨 In progress | 29 / 35 | ☐    |
+| **Phase 0**    | Foundation (scaffold, auth, RBAC, settings, shell) | 🔨 In progress | 30 / 35 | ☐    |
 | **Phase 1**    | Catalog + Inventory core (schema-first)            | ⬜ Not started | 0 / 25  | ☐    |
 | **Phase 2**    | Sales & Procurement (O2C + P2P documents)          | ⬜ Not started | 0 / 29  | ☐    |
 | **Phase 3**    | Finance (double-entry, postings, reports)          | ⬜ Not started | 0 / 17  | ☐    |
@@ -148,7 +148,7 @@ chris-erp/
 ### 0.7 Settings & configuration
 
 - [x] **PH0-29** Company settings: legal name, logo, addresses, contacts, tax ID, invoice footer/notes — displayed on future documents _(convex/organization.ts: get (session-gated — document renderers need letterhead too, not settings.view; resolves logo to a signed URL) + update (settings.edit, audited "update", full-form save — omitted optional clears, first save creates with baseCurrency "USD"); organizations.logoStorageId → logoFileId (files registry, kind "logo"); form at /settings/company (nav "Company", settings.view gate) with ImageUpload logo, address grid, invoice footer; tests/organization.test.ts)_
-- [ ] **PH0-30** Document numbering settings UI (view/edit sequences, preview format)
+- [x] **PH0-30** Document numbering settings UI (view/edit sequences, preview format) _(convex/sequences.ts: list (settings.view, canonical order first) / ensureDefaults (settings.create, audited "create" with created count; idempotent re-runs not audited) / update (settings.edit, audited with before/after — prefix uppercased + A-Z/0-9/- 1-10, padding 1-6, `next` never editable per PH0-25's grow-only contract, no-op saves unrecorded); page /settings/sequences (nav "Document numbering") with next-number column + edit dialog whose live preview uses the same formatSequence as issuance; tests appended to tests/sequences.test.ts)_
 - [ ] **PH0-31** Currency settings: base currency, exchange-rate list + manual update (used by pricing in Phase 2)
 - [ ] **PH0-32** Tax engine config UI: create rates (name, %, inclusive/exclusive), tax groups (customer assign), product tax categories (standard/reduced/zero/exempt)
 - [ ] **PH0-33** Date/number formatting preferences (locale, timezone)
