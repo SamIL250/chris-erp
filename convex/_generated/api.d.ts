@@ -18,6 +18,7 @@ import type * as authProviders from "../authProviders.js";
 import type * as authSessions from "../authSessions.js";
 import type * as currencies from "../currencies.js";
 import type * as files from "../files.js";
+import type * as formatting from "../formatting.js";
 import type * as http from "../http.js";
 import type * as invites from "../invites.js";
 import type * as notifications from "../notifications.js";
@@ -44,6 +45,7 @@ declare const fullApi: ApiFromModules<{
   authSessions: typeof authSessions;
   currencies: typeof currencies;
   files: typeof files;
+  formatting: typeof formatting;
   http: typeof http;
   invites: typeof invites;
   notifications: typeof notifications;
