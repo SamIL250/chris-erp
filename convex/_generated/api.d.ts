@@ -12,6 +12,7 @@ import type * as _lib_audit from "../_lib/audit.js";
 import type * as _lib_invites from "../_lib/invites.js";
 import type * as _lib_notifications from "../_lib/notifications.js";
 import type * as _lib_permissions from "../_lib/permissions.js";
+import type * as _lib_productCategories from "../_lib/productCategories.js";
 import type * as _lib_sequences from "../_lib/sequences.js";
 import type * as audit from "../audit.js";
 import type * as auth from "../auth.js";
@@ -44,6 +45,7 @@ declare const fullApi: ApiFromModules<{
   "_lib/invites": typeof _lib_invites;
   "_lib/notifications": typeof _lib_notifications;
   "_lib/permissions": typeof _lib_permissions;
+  "_lib/productCategories": typeof _lib_productCategories;
   "_lib/sequences": typeof _lib_sequences;
   audit: typeof audit;
   auth: typeof auth;

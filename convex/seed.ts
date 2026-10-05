@@ -4,6 +4,8 @@ import { auditedMutation } from "./_lib/audit";
 import { inviteUser } from "./_lib/invites";
 import { grantRole, requirePermission, requireRole } from "./_lib/permissions";
 import { ensureDefaultSequences } from "./_lib/sequences";
+import { syncProductCategoryRows } from "./_lib/productCategories";
+import { syncUrlPaths } from "./catalog/categories";
 import type { Id } from "./_generated/dataModel";
 
 /**
@@ -40,8 +42,8 @@ export const seed = auditedMutation({
     await requireRole(ctx, callerId, "owner");
 
     const created: Record<string, number> = {};
-    const bump = (key: string) => {
-      created[key] = (created[key] ?? 0) + 1;
+    const bump = (key: string, count = 1) => {
+      created[key] = (created[key] ?? 0) + count;
     };
     const invitedEmails: string[] = [];
     const invites: { email: string; url: string }[] = [];
@@ -197,6 +199,10 @@ export const seed = auditedMutation({
       nextPosition.set(parentKey, (nextPosition.get(parentKey) ?? 0) + 1);
       bump("categories");
     }
+    // PH1-05: materialize every category's storefront urlPath — fills the
+    // demo rows above AND heals rows that predate PH1-05 (idempotent:
+    // only stale/missing values are patched, nothing audited per-row).
+    await syncUrlPaths(ctx);
 
     // DEMO-… SKUs: 2 ultrasound (counted), monitor + archived legacy
     // (archived excluded from stats), centrifuges incl. a dual-category
@@ -269,6 +275,16 @@ export const seed = auditedMutation({
       });
       bump("products");
     }
+
+    // PH1-05: reconcile the `productCategories` join against every
+    // product's `categoryIds` — fills rows for the demo products above AND
+    // backfills products seeded before the join existed (CT-03; PH1-07's
+    // mutations keep it in sync going forward).
+    let joinRows = 0;
+    for (const product of await ctx.db.query("products").collect()) {
+      joinRows += await syncProductCategoryRows(ctx, product._id);
+    }
+    if (joinRows > 0) bump("productCategories", joinRows);
 
     // 7. Demo attributes (CT-03) — three definitions grouped into a set the
     //    ultrasound category inherits, so the Attributes page and

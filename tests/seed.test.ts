@@ -109,6 +109,7 @@ describe("seed (PH0-34)", () => {
       users: SYSTEM_ROLES.length,
       categories: 5,
       products: 7,
+      productCategories: 7, // PH1-05 join rows mirroring demo categoryIds
       attributeDefinitions: 3,
       attributeSets: 1,
     });
@@ -208,6 +209,7 @@ describe("seed (PH0-34)", () => {
       roleGrants: 1, // accountant only
       categories: 5, // demo tree — nothing pre-existed
       products: 7,
+      productCategories: 7, // PH1-05 join rows (uncategorized adds none)
       attributeDefinitions: 3, // demo attributes + set
       attributeSets: 1,
     });

@@ -272,9 +272,17 @@ export default defineSchema({
    * Category tree (PH1-01): adjacency list — `parentId` (absent = root) plus
    * manual ordering via `position` (0..n-1 unique per sibling set, maintained
    * by the mutations). Slugs are GLOBALLY unique (storefront URLs are
-   * slug-based); breadcrumb paths are computed on read — never stored, so a
-   * reparent can't leave stale paths behind. `visible` gates the storefront
-   * (Phase 4); product counts derive from `products.categoryIds` (PH1-06).
+   * slug-based). Two path notions live here: the admin breadcrumb `path`
+   * (Id[]) is still computed on read — never stored, so a reparent can't
+   * leave stale breadcrumbs — while `urlPath` (PH1-05) is the STORED
+   * URL string ("/parent/child/") behind `by_url_path`, so a storefront
+   * request resolves its whole URL in one indexed hit (and a branch's
+   * subtree scans by prefix). It is re-derived tree-wide after every
+   * create/update/move and by the seed — renames/reparents can't leave it
+   * stale (tests/storefrontIndexes.test.ts). Optional only so pre-PH1-05
+   * rows keep reading; the next write or a seed run heals them.
+   * `visible` gates the storefront (Phase 4); product counts derive from
+   * `products.categoryIds`.
    */
   categories: defineTable({
     name: v.string(),
@@ -288,11 +296,17 @@ export default defineSchema({
     position: v.number(),
     /** Storefront card image (PH4-02) — schema-first, UI lands later. */
     imageFileId: v.optional(v.id("files")),
+    /**
+     * Materialized URL path, "/parent-slug/slug/" (root-level = "/slug/") —
+     * PH1-05. Maintained by `syncUrlPaths`; see the table comment.
+     */
+    urlPath: v.optional(v.string()),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
     .index("by_slug", ["slug"])
-    .index("by_parent_position", ["parentId", "position"]),
+    .index("by_parent_position", ["parentId", "position"])
+    .index("by_url_path", ["urlPath"]),
 
   /**
    * Product master (PH1-06 completes this table). The identity + lifecycle
@@ -301,8 +315,12 @@ export default defineSchema({
    * descriptions, taxCategory, track flags, warranty/shelf-life, UoM,
    * images and attribute-set links arrive with PH1-06/07/13.
    * `categoryIds[]` is the PH1-06 contract — a product can sit in several
-   * categories. Lookups: storefront slug, warehouse/POS barcode→SKU later,
-   * status feeds pickers (archived hidden everywhere, PH1-15).
+   * categories. Convex indexes an array field as ONE whole-array value
+   * (it can't answer "contains this category"), so "products in this
+   * category" reads go through the `productCategories` join table
+   * (PH1-05), kept in sync with this array by the writer mutations.
+   * Lookups: storefront slug, warehouse/POS barcode→SKU later, status
+   * feeds pickers (archived hidden everywhere, PH1-15).
    */
   products: defineTable({
     name: v.string(),
@@ -316,6 +334,30 @@ export default defineSchema({
     .index("by_slug", ["slug"])
     .index("by_sku", ["sku"])
     .index("by_status", ["status"]),
+
+  /**
+   * Product↔category membership (PH1-05): the join table Convex needs to
+   * answer "products in this category" with an index — an index on
+   * `products.categoryIds` would sort by the WHOLE array value, so it can
+   * only match arrays equal to / starting with a given array, never
+   * "contains category X" (Convex's own guidance: "you can't index an
+   * array" → use a join table).
+   *
+   * `products.categoryIds` stays the source of truth (display, stats,
+   * admin editor); this table mirrors it — one row per (product,
+   * category) pair — and every mutation that writes `categoryIds` (PH1-07
+   * product editor) must call `syncProductCategoryRows` in the same
+   * transaction; product deletes remove their rows too (PH1-15). Seeded
+   * demo products are reconciled by `seed` (CT-03).
+   * Reads: `by_category` → storefront category pages + PH1-08 filters;
+   * `by_product` → reverse lookup + the sync helper itself.
+   */
+  productCategories: defineTable({
+    productId: v.id("products"),
+    categoryId: v.id("categories"),
+  })
+    .index("by_category", ["categoryId"])
+    .index("by_product", ["productId"]),
 
   /**
    * Attribute definitions (PH1-03): the spec vocabulary products express
@@ -354,9 +396,12 @@ export default defineSchema({
    *
    * Assignment lives on the SET (single-document edits → one audit
    * snapshot, and deleting a set takes its assignments with it — categories
-   * never point at sets, so there is nothing to clean up). `by_category`
-   * (Convex array index) serves the "sets covering this category" lookup;
-   * `by_name` orders the admin list.
+   * never point at sets, so there is nothing to clean up). `by_name` orders
+   * the admin list AND backs `attributes.forCategory`, which scans that
+   * whole (bounded) list and filters in JS — Convex indexes an array field
+   * as one whole-array value, so no index can answer "sets covering this
+   * category" without a join table (see `productCategories`, PH1-05);
+   * revisit only if sets ever stop being small config data.
    */
   attributeSets: defineTable({
     name: v.string(),
@@ -366,7 +411,37 @@ export default defineSchema({
     categoryIds: v.array(v.id("categories")),
     createdAt: v.number(),
     updatedAt: v.number(),
+  }).index("by_name", ["name"]),
+
+  /**
+   * Product attribute values (PH1-05, schema-first for PH1-07): one row per
+   * (product, attribute, value) — multi-select stores one row per chosen
+   * option. Values deliberately live OUTSIDE the product document (PH1-06's
+   * field list carries no `attributeValues[]`): spec edits never rewrite the
+   * product row, and facets scan typed indexes directly.
+   *
+   * Exactly one value column pairs with the definition's type —
+   * text/select/multi_select → `valueText`, number → `valueNumber`,
+   * boolean → `valueBoolean`, date → `valueDate` (epoch ms); the mutation
+   * that writes a row (PH1-07) enforces the pairing. Faceted filtering
+   * (research §4.7 P0): `by_attribute_*` answers "products where attribute
+   * X = value" as one indexed range (attributeId is the range prefix, the
+   * value narrows it); `by_product` serves the product spec sheet. Empty
+   * until PH1-07's editor starts writing rows.
+   */
+  attributeValues: defineTable({
+    productId: v.id("products"),
+    attributeId: v.id("attributeDefinitions"),
+    valueText: v.optional(v.string()),
+    valueNumber: v.optional(v.number()),
+    valueBoolean: v.optional(v.boolean()),
+    valueDate: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
   })
-    .index("by_name", ["name"])
-    .index("by_category", ["categoryIds"]),
+    .index("by_product", ["productId"])
+    .index("by_attribute_text", ["attributeId", "valueText"])
+    .index("by_attribute_number", ["attributeId", "valueNumber"])
+    .index("by_attribute_boolean", ["attributeId", "valueBoolean"])
+    .index("by_attribute_date", ["attributeId", "valueDate"]),
 });

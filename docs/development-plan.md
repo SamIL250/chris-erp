@@ -35,7 +35,7 @@
 | Phase          | Focus                                              | Status         | Tasks   | Gate |
 | -------------- | -------------------------------------------------- | -------------- | ------- | ---- |
 | **Phase 0**    | Foundation (scaffold, auth, RBAC, settings, shell) | ✅ Complete    | 35 / 35 | ☑    |
-| **Phase 1**    | Catalog + Inventory core (schema-first)            | 🔨 In progress | 4 / 25  | ☐    |
+| **Phase 1**    | Catalog + Inventory core (schema-first)            | 🔨 In progress | 5 / 25  | ☐    |
 | **Phase 2**    | Sales & Procurement (O2C + P2P documents)          | ⬜ Not started | 0 / 29  | ☐    |
 | **Phase 3**    | Finance (double-entry, postings, reports)          | ⬜ Not started | 0 / 17  | ☐    |
 | **Phase 4**    | Ecommerce storefront (B2C + B2B portal)            | ⬜ Not started | 0 / 24  | ☐    |
@@ -176,12 +176,12 @@ chris-erp/
 - [x] **PH1-02** Category admin UI: tree view + side editor, product counts, "uncategorized" handling
 - [x] **PH1-03** Attribute definitions: name + type (text, number, select, multi-select, boolean, date) + optional units
 - [x] **PH1-04** Attribute **sets**: group attributes, assign set(s) to category → products in that category inherit fields — _includes the **admin UI** for attribute definitions + sets (one Attributes page): PH1-03 shipped the definitions backend only (scope decision, 2026-10-05)_ — shipped 2026-10-05: `attributeSets` table + CRUD, `attributes.forCategory` inheritance resolver, definitions delete guard, `/catalog/attributes` page + sidebar group
-- [ ] **PH1-05** Storefront-ready indexes: category path/products-by-category, attribute filters index
+- [x] **PH1-05** Storefront-ready indexes: category path/products-by-category, attribute filters index — _shipped 2026-10-05: `categories.urlPath` + `by_url_path` (tree-wide re-derivation after create/update/move, seed heals old rows); `productCategories` join (Convex indexes an array field as one whole-array value — "contains category X" needs a join table); `attributeValues` + typed `by_attribute_*` facet indexes (schema-first for PH1-07)_
 
 ### 1.2 Product master
 
 - [ ] **PH1-06** `products` table: name, slug, SKU, barcode, brand, short/long description (rich), status (draft/active/archived), taxCategory, track flags, warranty/shelf-life fields, UoM, images[], categoryIds[], attributeSetIds[] — _core identity/lifecycle fields (name, slug, SKU, status, categoryIds + indexes) + the table itself landed early with PH1-02 because its counts/uncategorized stats read it; this task adds the remaining fields and the SKU rules_
-- [ ] **PH1-07** Product create/edit page: sections (Basic, Pricing, Attributes [dynamic from set — `attributes.forCategory` resolver shipped with PH1-04], Inventory/Tracking, Media, SEO), autosave draft, validation
+- [ ] **PH1-07** Product create/edit page: sections (Basic, Pricing, Attributes [dynamic from set — `attributes.forCategory` resolver shipped with PH1-04], Inventory/Tracking, Media, SEO), autosave draft, validation — _every write touching `categoryIds` must call `syncProductCategoryRows` in the same transaction (PH1-05's join; delete cleans `by_product` rows — PH1-15), and values rows go to `attributeValues` (PH1-05's typed columns)_
 - [ ] **PH1-08** Product list: reactive table — filter by category/brand/status/flags, search by name/SKU/barcode, bulk status change, column sort
 - [ ] **PH1-09** Variants: option axes (from set attributes e.g. color/config) → variant matrix, per-variant SKU/price/barcode/track flags; product-level defaults fill variants
 - [ ] **PH1-10** Pricing fields: `listPrice`, `costPrice` (display only — true moving average cost computed in inventory/finance), margin % shown to staff roles
@@ -665,6 +665,69 @@ _Move into a phase only via explicit re-prioritization._
 
 **Next up:** PH1-05 — storefront-ready indexes.
 
+### 2026-10-05 · Phase 1 (PH1-05)
+
+**Shipped**
+
+- **Category path index**: `categories.urlPath` (stored URL string,
+  "/parent/child/", root-level "/slug/") + `by_url_path` — the storefront
+  resolves a whole URL in one indexed hit and scans a branch's subtree by
+  prefix. `syncUrlPaths` re-derives every row's path after
+  create/update/move (a slug rename or reparent rewrites the whole
+  descendant chain in the same transaction); the field is optional so
+  pre-PH1-05 rows keep reading — the next write or a seed run heals them
+  (the dev DB's hand-created `it-equipments` row got its path that way).
+  Storefront phase queries: `eq(urlPath, url)` exact, `gte/lt` prefix range.
+- **Products-by-category**: `productCategories` join table
+  (by_category, by_product) + `syncProductCategoryRows` helper
+  (`convex/_lib`) — see the Convex finding below; reconciles rows both
+  ways (insert missing, delete orphans) and returns the insert count.
+  Seed (CT-03) reconciles every product after the demo loop → 7 demo join
+  rows on first run, 0 on re-runs.
+- **Attribute filters index**: `attributeValues` table — one row per
+  (product, attribute, value); multi-select stores one row per option;
+  exactly one typed value column per definition type (`valueText` /
+  `valueNumber` / `valueBoolean` / `valueDate`) — schema-first for
+  PH1-07's editor. Indexes: `by_product` (spec sheet) and four typed
+  `by_attribute_*` = attributeId range prefix + value narrowing, which is
+  what research §4.7 P0's faceted filter ("Color = Black", "Weight ∈
+  [3,5]") scans. Empty until PH1-07 writes rows.
+- `attributeSets` lost its `by_category` index (PH1-04 comment claimed it
+  served the covering-sets lookup — the finding below disproves that);
+  `attributes.forCategory`'s by_name scan + JS filter stands.
+- Verified: tsc/lint/format green, **129 tests / 21 files** (+6: urlPath
+  materialization, rename/reparent freshness, legacy-row heal, join sync
+  round trip, typed facet ranges), HTTP E2E 19 checks + SSR 200 /
+  anon → login.
+
+**Decisions**
+
+- **Convex can't index "array contains"** — an index on an array field
+  sorts by the WHOLE array value, so it only matches arrays equal to /
+  starting with a given array (Convex's own guidance: "you can't index an
+  array" → use a join table). That corrects the plan's assumption that
+  `.index("by_category", ["categoryIds"])` would serve category pages:
+  `productCategories` is the index, `products.categoryIds` stays the
+  source of truth (stats/display), and **PH1-07 must write both in the
+  same transaction** (noted on the task line). Same finding backs the
+  separate `attributeValues` table instead of a values array on the
+  product, and resolves PH1-04's open question: facets key on
+  `attributeId`, so definitions need no machine key.
+- Materializing `urlPath` revises PH1-01's "never stored" for the URL
+  string only — the admin breadcrumb `path` (Id[]) stays computed on
+  read. Staleness (the original concern) is prevented by re-deriving the
+  whole tree on every structural/slug write and proven by tests; the
+  payoff is O(1) URL resolution + prefix subtree scans instead of
+  slug-lookup + parent walk on every storefront request.
+- Optional field (not required) so no backfill step is needed: absent →
+  no index entry → simply invisible to `by_url_path` until healed.
+- `categories:stats` keeps its single JS pass over products — the
+  uncategorized bucket needs an empty-array scan that `by_category`
+  (now `productCategories`) can't provide anyway, and the table is
+  bounded config data.
+
+**Next up:** PH1-06 — products table, remaining fields + SKU rules.
+
 | Date       | Session         | Shipped (task IDs) | Decisions / notes                                                                                         | Next up                            |
 | ---------- | --------------- | ------------------ | --------------------------------------------------------------------------------------------------------- | ---------------------------------- |
 | 2026-10-04 | Plan created    | —                  | Research doc + development plan aligned with scoping decisions                                            | Start Phase 0 (PH0-01…)            |
@@ -672,3 +735,4 @@ _Move into a phase only via explicit re-prioritization._
 | 2026-10-05 | Phase 1 (cont.) | PH1-02             | Category admin UI + stats; products core landed early (PH1-06 note); demo catalog seed (CT-03)            | PH1-03 (attribute definitions)     |
 | 2026-10-05 | Phase 1 (cont.) | PH1-03             | Attribute definitions backend (type/unit/options shape rules); admin UI folded into PH1-04 (plan amended) | PH1-04 (attribute sets + admin UI) |
 | 2026-10-05 | Phase 1 (cont.) | PH1-04             | Attribute sets + `forCategory` inheritance resolver + Attributes admin UI; definitions delete guard       | PH1-05 (storefront indexes)        |
+| 2026-10-05 | Phase 1 (cont.) | PH1-05             | urlPath + by_url_path, productCategories join (Convex: no array-contains index), attributeValues facets   | PH1-06 (products table fields)     |

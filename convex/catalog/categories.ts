@@ -31,8 +31,12 @@ import type { Doc, Id } from "../_generated/dataModel";
  *
  * `list` returns the WHOLE tree in DFS order with computed `depth`/`path` —
  * categories are bounded config data (like sequences/taxRates), and tree
- * assembly/reparenting needs every node; paths are computed, never stored,
- * so a reparent can't leave stale breadcrumbs.
+ * assembly/reparenting needs every node; breadcrumb `path` (Id[]) is
+ * computed, never stored, so a reparent can't leave stale breadcrumbs.
+ * PH1-05 adds the STORED `urlPath` string ("parent/child" URL shape) +
+ * `by_url_path` for storefront URL resolution — `syncUrlPaths` re-derives
+ * the whole tree after create/update/move (slug renames and reparents
+ * rewrite every descendant), and heals any pre-PH1-05 row missing it.
  */
 
 const MAX_DEPTH = 6;
@@ -46,6 +50,39 @@ type Category = Doc<"categories">;
 
 async function loadAll(ctx: MutationCtx): Promise<Category[]> {
   return await ctx.db.query("categories").collect();
+}
+
+/**
+ * Materialize `urlPath` ("/parent-slug/slug/", root-level = "/slug/") on
+ * every category — PH1-05's `by_url_path` storefront lookup. Called after
+ * create/update/move (whenever a slug or a parent can have changed): the
+ * whole tree is re-derived from the current slugs/parents, so a rename or
+ * reparent rewrites every descendant in the same transaction, and any row
+ * missing the field (pre-PH1-05) is healed on the next write. Bounded
+ * config data (MAX_DEPTH 6, one scan per config mutation). Exported for
+ * the seed (which inserts categories raw); the guards sweep only inspects
+ * `export const … = auditedMutation|mutation` chunks, so this helper is
+ * never mistaken for a mutation — the audited mutations calling it own
+ * the trail.
+ */
+export async function syncUrlPaths(ctx: MutationCtx): Promise<void> {
+  const all = await loadAll(ctx);
+  const byId = new Map(all.map((row) => [row._id, row]));
+  const now = Date.now();
+  for (const row of all) {
+    // Walk to the root (move guarantees acyclic parent chains), rebuild
+    // top-down from the slugs along the way.
+    const slugs: string[] = [];
+    let current: Category | undefined = row;
+    while (current !== undefined) {
+      slugs.unshift(current.slug);
+      current = current.parentId === undefined ? undefined : byId.get(current.parentId);
+    }
+    const urlPath = `/${slugs.join("/")}/`;
+    if (row.urlPath !== urlPath) {
+      await ctx.db.patch(row._id, { urlPath, updatedAt: now });
+    }
+  }
 }
 
 /** Children of `parentId` (undefined = roots), ordered within siblings. */
@@ -308,6 +345,8 @@ export const create = auditedMutation({
       createdAt: now,
       updatedAt: now,
     });
+    // Materialize urlPath (PH1-05) — also heals any pre-PH1-05 rows.
+    await syncUrlPaths(ctx);
     return {
       result: { id },
       audit: {
@@ -386,6 +425,8 @@ export const update = auditedMutation({
       imageFileId: args.imageFileId,
       updatedAt: Date.now(),
     });
+    // A slug change rewrites this row's and every descendant's urlPath.
+    await syncUrlPaths(ctx);
     return { result: undefined, audit: { entityId: args.id, before, after } };
   },
 });
@@ -460,6 +501,8 @@ export const move = auditedMutation({
       }
     }
     await ctx.db.patch(args.id, { parentId: newParentId, position, updatedAt: now });
+    // Reparenting rewrites the moved subtree's urlPath (PH1-05).
+    await syncUrlPaths(ctx);
 
     return {
       result: undefined,
