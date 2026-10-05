@@ -68,7 +68,10 @@ _When adding a module: add a row here first, then the permission constant, then 
   `organization.update` (settings.edit), `organization:get` (session-only —
   every document renderer needs the letterhead), `sequences.list`
   (settings.view), `sequences.ensureDefaults` (settings.create),
-  `sequences.update` (settings.edit) (PH0-29/30). Self-service by design,
+  `sequences.update` (settings.edit) (PH0-29/30); `currencies.list`/
+  `currencies.rates` (settings.view), `currencies.create`
+  (settings.create), `currencies.updateBase`/`currencies.addRate`
+  (settings.edit) (PH0-31). Self-service by design,
   no RBAC: `users.updateProfile`, `users.setAvatar`, `files.*`
   (uploader-or-settings.edit on remove), `notifications.*` (own rows).
   New mutations call `requirePermission` from day one; PH0-35 verifies the
