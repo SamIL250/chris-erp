@@ -35,7 +35,7 @@
 | Phase          | Focus                                              | Status         | Tasks   | Gate |
 | -------------- | -------------------------------------------------- | -------------- | ------- | ---- |
 | **Phase 0**    | Foundation (scaffold, auth, RBAC, settings, shell) | ✅ Complete    | 35 / 35 | ☑    |
-| **Phase 1**    | Catalog + Inventory core (schema-first)            | 🔨 In progress | 6 / 25  | ☐    |
+| **Phase 1**    | Catalog + Inventory core (schema-first)            | 🔨 In progress | 7 / 25  | ☐    |
 | **Phase 2**    | Sales & Procurement (O2C + P2P documents)          | ⬜ Not started | 0 / 29  | ☐    |
 | **Phase 3**    | Finance (double-entry, postings, reports)          | ⬜ Not started | 0 / 17  | ☐    |
 | **Phase 4**    | Ecommerce storefront (B2C + B2B portal)            | ⬜ Not started | 0 / 24  | ☐    |
@@ -181,7 +181,7 @@ chris-erp/
 ### 1.2 Product master
 
 - [x] **PH1-06** `products` table: name, slug, SKU, barcode, brand, short/long description (rich), status (draft/active/archived), taxCategory, track flags, warranty/shelf-life fields, UoM, images[], categoryIds[], attributeSetIds[] — _core identity/lifecycle fields (name, slug, SKU, status, categoryIds + indexes) + the table itself landed early with PH1-02 because its counts/uncategorized stats read it; this task adds the remaining fields and the SKU rules_ — shipped 2026-10-05: full field manifest (all optional so pre-PH1-06 rows keep reading) + `by_barcode`, `lib/sku.ts` format rules (scope call: rules module only — uniqueness enforced by PH1-07's mutations), `categories.remove` products-reference guard (the check promised in PH1-02)
-- [ ] **PH1-07** Product create/edit page: sections (Basic, Pricing, Attributes [dynamic from set — `attributes.forCategory` resolver shipped with PH1-04], Inventory/Tracking, Media, SEO), autosave draft, validation — _every write touching `categoryIds` must call `syncProductCategoryRows` in the same transaction (PH1-05's join; delete cleans `by_product` rows — PH1-15), and values rows go to `attributeValues` (PH1-05's typed columns); SKU validation = `validateSku`/`skuFormatError` from `lib/sku` (PH1-06) + org-wide uniqueness via `by_sku` `.unique()` at write — format errors surface verbatim like slug errors, no auto-derivation ever rewrites a typed SKU; product deletes must also run the PH1-06 category guard's inverse (clean `by_product` rows) and set every PH1-06 field explicitly (optional schema fields, writer always sends them)_
+- [x] **PH1-07** Product create/edit page: sections (Basic, Pricing, Attributes [dynamic from set — `attributes.forCategory` resolver shipped with PH1-04], Inventory/Tracking, Media, SEO), autosave draft, validation — _every write touching `categoryIds` must call `syncProductCategoryRows` in the same transaction (PH1-05's join; delete cleans `by_product` rows — PH1-15), and values rows go to `attributeValues` (PH1-05's typed columns); SKU validation = `validateSku`/`skuFormatError` from `lib/sku` (PH1-06) + org-wide uniqueness via `by_sku` `.unique()` at write — format errors surface verbatim like slug errors, no auto-derivation ever rewrites a typed SKU; product deletes must also run the PH1-06 category guard's inverse (clean `by_product` rows) and set every PH1-06 field explicitly (optional schema fields, writer always sends them)_ — shipped 2026-10-06: `catalog/products` get/create/update/remove (audited, permission-first), SKU verbatim + `by_sku` org-wide uniqueness, same-transaction `syncProductCategoryRows` on every `categoryIds` write, values full-replace diffed by value-key (absent arg = untouched), editor at `/catalog/products/new` + `/[id]` (sections, Tiptap sanitized at write, 1.5s autosave), `products.get` → null for missing ids, delete cleans `attributeValues.by_product`
 - [ ] **PH1-08** Product list: reactive table — filter by category/brand/status/flags, search by name/SKU/barcode, bulk status change, column sort
 - [ ] **PH1-09** Variants: option axes (from set attributes e.g. color/config) → variant matrix, per-variant SKU/price/barcode/track flags; product-level defaults fill variants
 - [ ] **PH1-10** Pricing fields: `listPrice`, `costPrice` (display only — true moving average cost computed in inventory/finance), margin % shown to staff roles
@@ -787,6 +787,86 @@ _Move into a phase only via explicit re-prioritization._
 
 **Next up:** PH1-07 — product create/edit page + product mutations.
 
+### 2026-10-06 · Phase 1 (PH1-07)
+
+**Shipped**
+
+- **Product mutations** (`convex/catalog/products.ts`): `get` returns
+  `{product, attributes, values}` in one call — the row, its applicable
+  attributes (set-inheritance order), and its stored value rows; malformed
+  or missing id → `null` (typo URLs get "not found", not the error
+  boundary). `create`/`update`/`remove` are `auditedMutation` with
+  `requirePermission("catalog", …)` first; remove deletes the
+  `attributeValues` `by_product` rows (the PH1-06 guard inverse) and the
+  `productCategories` join via `syncProductCategoryRows`, same transaction.
+- **SKU enforced at write**: `validateSku`/`skuFormatError` messages
+  verbatim (like slug errors), org-wide uniqueness via `by_sku` — the
+  uniqueness probe normalizes (trim + uppercase) for LOOKUP only and never
+  re-derives a typed SKU; blank/whitespace names rejected.
+- **`categoryIds` contract**: every write runs `syncProductCategoryRows`
+  in the same transaction (create + update; seed already did), and the
+  writer sets every PH1-06 field explicitly — new rows are complete while
+  pre-PH1-06 rows keep reading (`?? false` / `?? []` at compare time).
+- **Values → typed columns**: `attributeValues` present = full replace,
+  diffed by value-key (attributeId + typed value) so unchanged entries
+  keep their row ids; absent = stored rows untouched. Entries validate
+  against the NEW `categoryIds` + `attributeSetIds` ("One of those
+  attributes isn't assigned to this product." / option-membership
+  messages); `attributes.update` (type changes) and `attributes.remove`
+  are blocked while value rows exist.
+- **Slug resolver extracted** to `convex/_lib/slugs.ts`:
+  `resolveUniqueSlug(isTaken, name, provided, noun)` probe API — categories
+  pass an array probe, products probe `by_slug` (unbounded rows, so
+  `.first()` + explicit message, never `.unique()`); the `noun` param keeps
+  exact per-entity messages ("A product with slug … already exists.").
+  Product slug is KEPT when omitted (passed as `currentSlug`), re-derived
+  only when blank.
+- **Editor UI**: `/catalog/products/new` + `/catalog/products/[id]`
+  (`product-editor` shell: queries, permission branches, not-found;
+  `product-form`: Basic / Pricing / Attributes (dynamic from set via shared
+  `lib/attributes.ts` `orderApplicableAttributes` — same order on client
+  and server) / Inventory & Tracking / Media / SEO sections, ProductFacts
+  view-only), Tiptap WYSIWYG sanitized server-side at write
+  (`lib/richText.ts`), 1.5 s debounced autosave with a quiet schema gate;
+  create-mode first save does `history.replaceState` (no remount → caret
+  survives) then continues as an update. `/catalog/products` stub hands off
+  to `/new` until PH1-08; sidebar Products entries added.
+- **Seed**: 6 demo `attributeValues` rows (3 attrs × 2 ultrasound products)
+  so the editor, spec tables, and later facets render real data.
+- Verified: tsc/lint/format green, **160 tests / 25 files** (+16:
+  `productCrud` 14 + `richText` + seed count), HTTP E2E **37 checks**
+  (SSR gating both directions, SKU verbatim + org-wide dup, slug `-2`
+  suffix, sanitize-at-write, applicable attributes, values replace /
+  absent-arg / no-op via `updatedAt`, move + option guards, RBAC, remove
+  cleanup).
+
+**Decisions**
+
+- **HTTP/E2E findings** (session resumed after a power loss killed the dev
+  processes): Convex function paths use SLASHES for nested modules —
+  `catalog/products:create`, colon only between root module and function
+  (`auth:signIn`); ConvexError messages arrive clean in `errorData` while
+  `errorMessage` wraps them in "[Request ID …] Server Error" + stack;
+  SSR checks must sign in through `POST /api/auth` so BOTH auth cookies
+  are set — a lone access-token cookie makes @convex-dev/auth's middleware
+  null the request cookies (`refreshTokens === null` → forwarding step)
+  and the route reads as signed-out.
+- **Streamed redirect accepted**: `/catalog/products` → `/new` answers 200
+  with a `NEXT_REDIRECT;replace;…;307` flight digest instead of an HTTP
+  Location, because `(admin)/loading.tsx` commits 200 before the page
+  renders (Next 16's documented mid-stream fallback — identical to
+  PH1-02's `/catalog` stub). The E2E asserts the digest and target.
+- Update compare treats legacy flag rows as `false` (`?? false`) and
+  compares arrays element-wise; no-op saves return `audit: undefined`, so
+  `updatedAt` and the audit log both stay untouched (proven in E2E).
+- `products.get` takes `v.string()` id rather than `v.id` so a malformed
+  URL segment resolves to `null` (404 branch) instead of throwing a
+  validation error.
+- Values are replaced as rows (an edited value = a new row id); typed
+  columns are written explicitly per entry, so facet indexes stay exact.
+
+**Next up:** PH1-08 — product list (reactive table, filters, bulk status).
+
 | Date       | Session         | Shipped (task IDs) | Decisions / notes                                                                                         | Next up                            |
 | ---------- | --------------- | ------------------ | --------------------------------------------------------------------------------------------------------- | ---------------------------------- |
 | 2026-10-04 | Plan created    | —                  | Research doc + development plan aligned with scoping decisions                                            | Start Phase 0 (PH0-01…)            |
@@ -796,3 +876,4 @@ _Move into a phase only via explicit re-prioritization._
 | 2026-10-05 | Phase 1 (cont.) | PH1-04             | Attribute sets + `forCategory` inheritance resolver + Attributes admin UI; definitions delete guard       | PH1-05 (storefront indexes)        |
 | 2026-10-05 | Phase 1 (cont.) | PH1-05             | urlPath + by_url_path, productCategories join (Convex: no array-contains index), attributeValues facets   | PH1-06 (products table fields)     |
 | 2026-10-05 | Phase 1 (cont.) | PH1-06             | Products field manifest + by_barcode, lib/sku rules, categories.remove products guard; null-key finding   | PH1-07 (product editor)            |
+| 2026-10-06 | Phase 1 (cont.) | PH1-07             | Product editor + CRUD: SKU verbatim + by_sku uniqueness, same-txn join sync, values diff, E2E 37 checks   | PH1-08 (product list)              |

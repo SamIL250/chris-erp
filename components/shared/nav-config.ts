@@ -30,6 +30,7 @@ export const NAV_ITEMS: (NavItemType | NavItemDividerType)[] = [
     items: [
       { label: "Categories", href: "/catalog/categories" },
       { label: "Attributes", href: "/catalog/attributes" },
+      { label: "Products", href: "/catalog/products" },
     ],
   },
   { label: "Inventory", href: "/inventory", icon: LayersThree01 },
@@ -64,6 +65,7 @@ export const NAV_MODULES: Record<string, Module> = {
   "/catalog": "catalog",
   "/catalog/categories": "catalog",
   "/catalog/attributes": "catalog",
+  "/catalog/products": "catalog",
   "/inventory": "inventory",
   "/sales": "sales",
   "/procurement": "procurement",

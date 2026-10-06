@@ -333,6 +333,62 @@ export const seed = auditedMutation({
       bump("attributeSets");
     }
 
+    // 8. Demo attribute VALUES (CT-03, extended as modules land — PH1-07
+    //    owns `attributeValues` writes): the two ultrasound products carry
+    //    specs from the inherited "Physical specs" set, so the PH1-07
+    //    editor, spec tables, and PH1-08/PH4 facets render real data.
+    //    Idempotent per product: a row set already present → skip.
+    const demoValues: {
+      sku: string;
+      values: { attribute: "Weight" | "Color" | "Dimensions"; value: string | number }[];
+    }[] = [
+      {
+        sku: "DEMO-1001",
+        values: [
+          { attribute: "Weight", value: 4.2 },
+          { attribute: "Color", value: "Black" },
+          { attribute: "Dimensions", value: "60 × 40 × 25 cm" },
+        ],
+      },
+      {
+        sku: "DEMO-1002",
+        values: [
+          { attribute: "Weight", value: 8.6 },
+          { attribute: "Color", value: "Silver" },
+          { attribute: "Dimensions", value: "85 × 55 × 45 cm" },
+        ],
+      },
+    ];
+    const productBySku = new Map(
+      (await ctx.db.query("products").collect()).map((row) => [row.sku, row._id]),
+    );
+    let valueRows = 0;
+    for (const demo of demoValues) {
+      const productId = productBySku.get(demo.sku);
+      if (productId === undefined) continue;
+      const hasValues =
+        (await ctx.db
+          .query("attributeValues")
+          .withIndex("by_product", (q) => q.eq("productId", productId))
+          .first()) !== null;
+      if (hasValues) continue;
+      for (const entry of demo.values) {
+        const attributeId = definitionByName.get(entry.attribute);
+        if (attributeId === undefined) continue;
+        await ctx.db.insert("attributeValues", {
+          productId,
+          attributeId,
+          ...(typeof entry.value === "number"
+            ? { valueNumber: entry.value }
+            : { valueText: entry.value }),
+          createdAt: now,
+          updatedAt: now,
+        });
+        valueRows += 1;
+      }
+    }
+    if (valueRows > 0) bump("attributeValues", valueRows);
+
     const changed =
       Object.values(created).reduce((total, count) => total + count, 0) > 0 ||
       invitedEmails.length > 0;

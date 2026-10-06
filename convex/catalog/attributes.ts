@@ -1,7 +1,8 @@
 import { ConvexError, v } from "convex/values";
+import { orderApplicableAttributes } from "../../lib/attributes";
 import { auditedMutation } from "../_lib/audit";
 import { requirePermission } from "../_lib/permissions";
-import { query, type MutationCtx } from "../_generated/server";
+import { query, type MutationCtx, type QueryCtx } from "../_generated/server";
 import type { Doc, Id } from "../_generated/dataModel";
 
 /**
@@ -17,8 +18,9 @@ import type { Doc, Id } from "../_generated/dataModel";
  *   supplying options for other types is an error — explicit beats silently
  *   dropped data
  * - update is full-form (omitted unit/options clear, same convention as the
- *   category editor); type changes are free-form while no product values
- *   exist yet — once PH1-07 stores values, narrowing types may need a guard
+ *   category editor); type changes are blocked while product value rows
+ *   exist (PH1-07 guard — they'd be stranded in their old typed column):
+ *   clear the values first, explicitly
  *
  * Permissions per matrix (PH0-21): view → catalog.view (everyone), create →
  * catalog.create (owner/admin/sales), edits → catalog.edit (same), delete →
@@ -28,9 +30,8 @@ import type { Doc, Id } from "../_generated/dataModel";
  * `list` returns the whole collection in name order (by_name index) —
  * bounded config data like categories/sequences/taxRates.
  *
- * Delete reference check: blocking deletes while an attribute sits in a set
- * arrives with PH1-04 (the `attributeSets` table doesn't exist yet); product
- * value references follow with PH1-07.
+ * Delete reference checks: sets since PH1-04, product value references
+ * since PH1-07 (`applicableAttributes` / `valuesFor` below).
  */
 
 const MAX_NAME = 100;
@@ -118,6 +119,51 @@ export const list = query({
 });
 
 /**
+ * Value rows referencing a definition. All four `by_attribute_*` indexes
+ * share `attributeId` as their prefix, and a row missing a typed column is
+ * still indexed under that column's null key (PH1-06 finding) — so one
+ * prefix scan on `by_attribute_text` sees EVERY row for the attribute no
+ * matter which typed column holds its value.
+ */
+async function valuesFor(ctx: QueryCtx | MutationCtx, attributeId: Id<"attributeDefinitions">) {
+  return await ctx.db
+    .query("attributeValues")
+    .withIndex("by_attribute_text", (q) => q.eq("attributeId", attributeId))
+    .collect();
+}
+
+/** Distinct products carrying a value for this definition. */
+async function countValueProducts(
+  ctx: QueryCtx | MutationCtx,
+  attributeId: Id<"attributeDefinitions">,
+): Promise<number> {
+  const rows = await valuesFor(ctx, attributeId);
+  return new Set(rows.map((row) => row.productId)).size;
+}
+
+/**
+ * Definitions applicable to a product (PH1-07): the same ordering rule as
+ * `forCategory`, widened to the union of every set covering ANY of the
+ * product's categories plus the product's own `attributeSetIds` picks.
+ * Shared by `products.get` (the editor loader) and the product mutations
+ * (value validation), built on the pure `lib/attributes.ts` ordering the
+ * client form mirrors — so what the editor renders and what the mutation
+ * accepts can't disagree.
+ */
+export async function applicableAttributes(
+  ctx: QueryCtx | MutationCtx,
+  args: { categoryIds: Id<"categories">[]; attributeSetIds: Id<"attributeSets">[] },
+): Promise<Doc<"attributeDefinitions">[]> {
+  const sets = await ctx.db.query("attributeSets").withIndex("by_name").order("asc").collect();
+  const definitions = await ctx.db
+    .query("attributeDefinitions")
+    .withIndex("by_name")
+    .order("asc")
+    .collect();
+  return orderApplicableAttributes(sets, definitions, args);
+}
+
+/**
  * Effective attributes for products in `categoryId` (PH1-04 inheritance,
  * consumed by the PH1-07 product editor and spec tables): the union of
  * every set covering the category — set name order first, then each set's
@@ -131,20 +177,10 @@ export const forCategory = query({
     if ((await ctx.db.get(args.categoryId)) === null) {
       throw new ConvexError("This category no longer exists.");
     }
-    const sets = await ctx.db.query("attributeSets").withIndex("by_name").order("asc").collect();
-
-    const ordered: Id<"attributeDefinitions">[] = [];
-    const seen = new Set<string>();
-    for (const set of sets) {
-      if (!set.categoryIds.includes(args.categoryId)) continue;
-      for (const id of set.attributeIds) {
-        if (seen.has(id)) continue;
-        seen.add(id);
-        ordered.push(id);
-      }
-    }
-    const rows = await Promise.all(ordered.map((id) => ctx.db.get(id)));
-    return rows.filter((row): row is Doc<"attributeDefinitions"> => row !== null);
+    return await applicableAttributes(ctx, {
+      categoryIds: [args.categoryId],
+      attributeSetIds: [],
+    });
   },
 });
 
@@ -209,6 +245,18 @@ export const update = auditedMutation({
     if (row === undefined) {
       throw new ConvexError("This attribute no longer exists.");
     }
+    // PH1-07's type-change guard (deferred here from PH1-04): a type change
+    // would strand stored value rows in their old typed column — a valueText
+    // row under a now-`number` definition renders (and validates) as garbage.
+    // Explicit beats silently dropped data: clear the values first.
+    if (args.type !== row.type) {
+      const used = await countValueProducts(ctx, args.id);
+      if (used > 0) {
+        throw new ConvexError(
+          `This attribute is used by ${used} product${used === 1 ? "" : "s"} — clear those values before changing its type.`,
+        );
+      }
+    }
 
     const name = normalizeName(args.name);
     const { unit, options } = normalizeShape(args.type, args.unit, args.options);
@@ -247,14 +295,22 @@ export const remove = auditedMutation({
     if (row === undefined) {
       throw new ConvexError("This attribute no longer exists.");
     }
-    // PH1-04's reference check: definitions group into sets. Product value
-    // references follow with PH1-07 (no value storage exists yet).
+    // PH1-04's reference check: definitions group into sets.
     const sets = await ctx.db.query("attributeSets").collect();
     const usedBy = sets.filter((set) => set.attributeIds.includes(args.id));
     if (usedBy.length > 0) {
       const count = usedBy.length;
       throw new ConvexError(
         `This attribute is used by ${count} attribute set${count === 1 ? "" : "s"} — remove it there first.`,
+      );
+    }
+    // PH1-07's value check: product values reference the definition. Clear
+    // them from the product editor first (delete would strand audit-less rows
+    // behind a definition that can never validate them again).
+    const valueProducts = await countValueProducts(ctx, args.id);
+    if (valueProducts > 0) {
+      throw new ConvexError(
+        `This attribute is used by ${valueProducts} product${valueProducts === 1 ? "" : "s"} — remove those values on the product first.`,
       );
     }
     await ctx.db.delete(args.id);

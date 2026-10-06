@@ -1,7 +1,7 @@
 import { ConvexError, v } from "convex/values";
-import { slugify } from "../../lib/slug";
 import { auditedMutation } from "../_lib/audit";
 import { requirePermission } from "../_lib/permissions";
+import { resolveUniqueSlug } from "../_lib/slugs";
 import { query, type MutationCtx } from "../_generated/server";
 import type { Doc, Id } from "../_generated/dataModel";
 
@@ -44,7 +44,6 @@ const MAX_DEPTH = 6;
 const MAX_NAME = 100;
 const MAX_SEO_TITLE = 100;
 const MAX_SEO_DESCRIPTION = 300;
-const MAX_SLUG = 60;
 const MAX_DESCRIPTION = 5000;
 
 type Category = Doc<"categories">;
@@ -160,56 +159,6 @@ function normalizeOptional(
   return trimmed;
 }
 
-function slugTaken(all: Category[], slug: string, selfId?: Id<"categories">): boolean {
-  return all.some((row) => row.slug === slug && row._id !== selfId);
-}
-
-/**
- * Resolve the slug to store. Explicit input normalizes and must be free;
- * omitted derives from the name (truncated to MAX_SLUG) and gets a -2/-3
- * suffix on collision, with room reserved for the suffix.
- */
-function resolveSlug(
-  all: Category[],
-  name: string,
-  provided: string | undefined,
-  selfId?: Id<"categories">,
-): string {
-  if (provided !== undefined && provided.trim() !== "") {
-    const slug = slugify(provided);
-    if (slug.length === 0) {
-      throw new ConvexError("Slug must contain at least one letter or number.");
-    }
-    if (slug.length > MAX_SLUG) {
-      throw new ConvexError(`Slug must be ${MAX_SLUG} characters or fewer.`);
-    }
-    if (slugTaken(all, slug, selfId)) {
-      throw new ConvexError(`A category with slug "${slug}" already exists.`);
-    }
-    return slug;
-  }
-
-  let base = slugify(name);
-  if (base.length === 0) {
-    throw new ConvexError("Provide a slug — the name has no URL-usable characters.");
-  }
-  if (base.length > MAX_SLUG) {
-    base = base.slice(0, MAX_SLUG).replace(/-+$/, "");
-  }
-  if (!slugTaken(all, base, selfId)) return base;
-  for (let suffix = 2; suffix < 1000; suffix += 1) {
-    const tail = `-${suffix}`;
-    const head =
-      base.length + tail.length > MAX_SLUG
-        ? base.slice(0, MAX_SLUG - tail.length).replace(/-+$/, "")
-        : base;
-    const candidate = `${head}${tail}`;
-    if (!slugTaken(all, candidate, selfId)) return candidate;
-  }
-  /* c8 ignore next */
-  throw new ConvexError(`Couldn't derive a unique slug from "${base}".`);
-}
-
 async function validateImage(ctx: MutationCtx, imageFileId: Id<"files"> | undefined) {
   if (imageFileId !== undefined && (await ctx.db.get(imageFileId)) === null) {
     throw new ConvexError("That image no longer exists.");
@@ -321,7 +270,12 @@ export const create = auditedMutation({
         throw new ConvexError(`Categories can be nested at most ${MAX_DEPTH} levels deep.`);
       }
     }
-    const slug = resolveSlug(all, name, args.slug);
+    const slug = await resolveUniqueSlug(
+      (candidate) => all.some((r) => r.slug === candidate),
+      name,
+      args.slug,
+      "category",
+    );
     await validateImage(ctx, args.imageFileId);
 
     const description = normalizeOptional(args.description, MAX_DESCRIPTION, "Description");
@@ -381,7 +335,15 @@ export const update = auditedMutation({
 
     const name = normalizeName(args.name);
     // `slug` omitted → keep (URL stability); `""` → re-derive from name.
-    const slug = args.slug === undefined ? row.slug : resolveSlug(all, name, args.slug, args.id);
+    const slug =
+      args.slug === undefined
+        ? row.slug
+        : await resolveUniqueSlug(
+            (candidate) => all.some((r) => r.slug === candidate && r._id !== args.id),
+            name,
+            args.slug,
+            "category",
+          );
     const description = normalizeOptional(args.description, MAX_DESCRIPTION, "Description");
     const seoTitle = normalizeOptional(args.seoTitle, MAX_SEO_TITLE, "SEO title");
     const seoDescription = normalizeOptional(

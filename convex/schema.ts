@@ -370,6 +370,9 @@ export default defineSchema({
     categoryIds: v.array(v.id("categories")),
     /** Product-level attribute sets (extra beyond category-inherited). */
     attributeSetIds: v.optional(v.array(v.id("attributeSets"))),
+    /** Storefront meta (PH1-07 validates 100/300 like categories). */
+    seoTitle: v.optional(v.string()),
+    seoDescription: v.optional(v.string()),
     createdAt: v.number(),
     updatedAt: v.number(),
   })

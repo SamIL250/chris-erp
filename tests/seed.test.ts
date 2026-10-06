@@ -112,6 +112,7 @@ describe("seed (PH0-34)", () => {
       productCategories: 7, // PH1-05 join rows mirroring demo categoryIds
       attributeDefinitions: 3,
       attributeSets: 1,
+      attributeValues: 6, // PH1-07: 3 specs × 2 ultrasound products
     });
     expect(first.invites).toHaveLength(SYSTEM_ROLES.length);
     for (const invite of first.invites) {
@@ -212,6 +213,7 @@ describe("seed (PH0-34)", () => {
       productCategories: 7, // PH1-05 join rows (uncategorized adds none)
       attributeDefinitions: 3, // demo attributes + set
       attributeSets: 1,
+      attributeValues: 6, // PH1-07: 3 specs × 2 ultrasound products
     });
     expect(result.invites.map((invite) => invite.email)).toEqual([
       "admin@example.com",
