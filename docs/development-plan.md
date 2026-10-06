@@ -35,7 +35,7 @@
 | Phase          | Focus                                              | Status         | Tasks   | Gate |
 | -------------- | -------------------------------------------------- | -------------- | ------- | ---- |
 | **Phase 0**    | Foundation (scaffold, auth, RBAC, settings, shell) | ✅ Complete    | 35 / 35 | ☑    |
-| **Phase 1**    | Catalog + Inventory core (schema-first)            | 🔨 In progress | 7 / 25  | ☐    |
+| **Phase 1**    | Catalog + Inventory core (schema-first)            | 🔨 In progress | 8 / 25  | ☐    |
 | **Phase 2**    | Sales & Procurement (O2C + P2P documents)          | ⬜ Not started | 0 / 29  | ☐    |
 | **Phase 3**    | Finance (double-entry, postings, reports)          | ⬜ Not started | 0 / 17  | ☐    |
 | **Phase 4**    | Ecommerce storefront (B2C + B2B portal)            | ⬜ Not started | 0 / 24  | ☐    |
@@ -182,7 +182,7 @@ chris-erp/
 
 - [x] **PH1-06** `products` table: name, slug, SKU, barcode, brand, short/long description (rich), status (draft/active/archived), taxCategory, track flags, warranty/shelf-life fields, UoM, images[], categoryIds[], attributeSetIds[] — _core identity/lifecycle fields (name, slug, SKU, status, categoryIds + indexes) + the table itself landed early with PH1-02 because its counts/uncategorized stats read it; this task adds the remaining fields and the SKU rules_ — shipped 2026-10-05: full field manifest (all optional so pre-PH1-06 rows keep reading) + `by_barcode`, `lib/sku.ts` format rules (scope call: rules module only — uniqueness enforced by PH1-07's mutations), `categories.remove` products-reference guard (the check promised in PH1-02)
 - [x] **PH1-07** Product create/edit page: sections (Basic, Pricing, Attributes [dynamic from set — `attributes.forCategory` resolver shipped with PH1-04], Inventory/Tracking, Media, SEO), autosave draft, validation — _every write touching `categoryIds` must call `syncProductCategoryRows` in the same transaction (PH1-05's join; delete cleans `by_product` rows — PH1-15), and values rows go to `attributeValues` (PH1-05's typed columns); SKU validation = `validateSku`/`skuFormatError` from `lib/sku` (PH1-06) + org-wide uniqueness via `by_sku` `.unique()` at write — format errors surface verbatim like slug errors, no auto-derivation ever rewrites a typed SKU; product deletes must also run the PH1-06 category guard's inverse (clean `by_product` rows) and set every PH1-06 field explicitly (optional schema fields, writer always sends them)_ — shipped 2026-10-06: `catalog/products` get/create/update/remove (audited, permission-first), SKU verbatim + `by_sku` org-wide uniqueness, same-transaction `syncProductCategoryRows` on every `categoryIds` write, values full-replace diffed by value-key (absent arg = untouched), editor at `/catalog/products/new` + `/[id]` (sections, Tiptap sanitized at write, 1.5s autosave), `products.get` → null for missing ids, delete cleans `attributeValues.by_product`
-- [ ] **PH1-08** Product list: reactive table — filter by category/brand/status/flags, search by name/SKU/barcode, bulk status change, column sort
+- [x] **PH1-08** Product list: reactive table — filter by category/brand/status/flags, search by name/SKU/barcode, bulk status change, column sort — _one bounded full scan serves every combo (substring search over three fields can't ride an index; a Convex search index exposes one searchable field, so name/SKU/barcode would need merging — revisit if catalogs outgrow it), category filter reads `categoryIds` (PH1-05 source of truth), sort ties break on `_id` so pagination never reshuffles, page window clamps 1..200; bulk change is one transaction that resolves every id first and audits per CHANGED row_ — shipped 2026-10-06: `catalog/products:list` + `:brands` + `:bulkStatus` (audited, `catalog.edit`), list page at `/catalog/products` replacing the redirect stub (DataTable: debounced search, category/brand/status/flags filters, column sort, selection-gated bulk bar)
 - [ ] **PH1-09** Variants: option axes (from set attributes e.g. color/config) → variant matrix, per-variant SKU/price/barcode/track flags; product-level defaults fill variants
 - [ ] **PH1-10** Pricing fields: `listPrice`, `costPrice` (display only — true moving average cost computed in inventory/finance), margin % shown to staff roles
 - [ ] **PH1-11** Units of measure + conversions (each → box → case) with purchase/sales UoM — _base `unitOfMeasure` field landed with PH1-06; this task adds the conversions + doc-level UoM_
@@ -865,7 +865,66 @@ _Move into a phase only via explicit re-prioritization._
 - Values are replaced as rows (an edited value = a new row id); typed
   columns are written explicitly per entry, so facet indexes stay exact.
 
-**Next up:** PH1-08 — product list (reactive table, filters, bulk status).
+### 2026-10-06 · Phase 1 (PH1-08)
+
+**Shipped**
+
+- **List query** (`catalog/products:list`): one bounded full scan,
+  filtered and sorted in memory — same "bounded admin read" rationale as
+  `categories.stats` (PH1-02) and the audit filters (PH0-26); search is a
+  case-insensitive trimmed substring over name/SKU/barcode (an index can't
+  serve that, and a Convex search index exposes ONE searchable field —
+  name/SKU/barcode would need three queries merged; revisit if catalogs
+  outgrow this). Filters: category via `categoryIds` (source of truth, not
+  the join — we already hold every row, so a stale join can't hide a
+  product from staff), brand exact, single status, flags with AND
+  semantics. Sort keys name/sku/brand/status/updatedAt, default newest
+  first, `_id` ascending tiebreak so bulk-stamped equal `updatedAt` values
+  never reshuffle pages; `limit` clamps to 1..200 (default 50).
+  `catalog/products:brands` = distinct non-empty brands for the dropdown
+  (full scan — brands live on the product row, nothing to index).
+- **`bulkStatus`**: same `catalog.edit` ladder as `update`. Every id
+  resolves BEFORE any patch — a vanished product fails the whole batch, so
+  a selection can never half-apply; duplicates dedupe first; rows already
+  in the target status keep their `updatedAt` and record nothing (PH0-30).
+  Audit is ONE entry per CHANGED row (`auditedMutation`'s single-entry
+  shape can't name a batch — wrapper returns `audit: undefined`, handler
+  calls `appendAudit` per row with `{status}` before/after).
+- **List page** (`/catalog/products`) replaces the PH1-07 redirect stub:
+  DataTable with a 300 ms debounced search input, category (indented) /
+  brand / status selects, a flags dropdown (Check-marked multi-select),
+  column sort, server-side page window (Load more grows `limit`), rows →
+  editor (Link in the primary cell for keyboard + `onRowClick` for
+  pointer), and a selection-gated bulk bar (Set active / Set draft / Set
+  archived → "N set to X · M already X" toast, error toast via
+  `toUserMessage`) rendered only with `catalog.edit`. Filter/search/sort
+  changes rewind the window and clear the selection so bulk actions can't
+  target rows the user can't see.
+- Verified: tsc/lint/format green, **169 tests / 26 files** (+9:
+  `productList` — gating, search ×3 fields, every filter + intersection,
+  sort order/stability, brands facet, bulk audit/no-op/permission/dead-id
+  cases), HTTP E2E **41 checks** (SSR stub replaced, list semantics over
+  the wire, per-row audit snapshots, RBAC, cleanup).
+
+**Decisions**
+
+- **HTTP/E2E finding**: the admin shell streams `(admin)/loading.tsx` and
+  children hydrate client-side — a static fetch of an (admin) page never
+  contains page copy, so the "stub replaced by the list" assertion rides
+  the flight payload instead: `app/(admin)/catalog/products/page.tsx
+[app-client]` present AND no `NEXT_REDIRECT;replace;/catalog/products/new`
+  digest.
+- The page keeps Convex's `useQuery` (not `usePaginatedQuery`): filters +
+  sort require materializing the match set anyway, so the query returns
+  `{rows, total, hasMore}` for the current window and "Load more" grows
+  the limit — no opaque cursors to invalidate when a filter changes.
+- Status filter is single-select (All/Active/Draft/Archived) and category
+  filter is direct membership (the stats counts PH1-02 reports) — subtree
+  "include descendants" can come later with the storefront facet work.
+- Sidebar/nav unchanged: `/catalog` still redirects to Categories (the
+  PH1-04 note's promise); Products entries already pointed at the index.
+
+**Next up:** PH1-09 — variants (option axes → variant matrix).
 
 | Date       | Session         | Shipped (task IDs) | Decisions / notes                                                                                         | Next up                            |
 | ---------- | --------------- | ------------------ | --------------------------------------------------------------------------------------------------------- | ---------------------------------- |
@@ -877,3 +936,4 @@ _Move into a phase only via explicit re-prioritization._
 | 2026-10-05 | Phase 1 (cont.) | PH1-05             | urlPath + by_url_path, productCategories join (Convex: no array-contains index), attributeValues facets   | PH1-06 (products table fields)     |
 | 2026-10-05 | Phase 1 (cont.) | PH1-06             | Products field manifest + by_barcode, lib/sku rules, categories.remove products guard; null-key finding   | PH1-07 (product editor)            |
 | 2026-10-06 | Phase 1 (cont.) | PH1-07             | Product editor + CRUD: SKU verbatim + by_sku uniqueness, same-txn join sync, values diff, E2E 37 checks   | PH1-08 (product list)              |
+| 2026-10-06 | Phase 1 (cont.) | PH1-08             | Product list: bounded-scan list query + brands facet + bulkStatus (per-changed-row audit), E2E 41 checks  | PH1-09 (variants)                  |

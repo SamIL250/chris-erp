@@ -1,7 +1,7 @@
 import { ConvexError, v } from "convex/values";
 import { sanitizeRichText } from "../../lib/richText";
 import { validateSku } from "../../lib/sku";
-import { auditedMutation } from "../_lib/audit";
+import { appendAudit, auditedMutation } from "../_lib/audit";
 import { requirePermission } from "../_lib/permissions";
 import { resolveUniqueSlug } from "../_lib/slugs";
 import { syncProductCategoryRows } from "../_lib/productCategories";
@@ -10,10 +10,11 @@ import { query, type MutationCtx, type QueryCtx } from "../_generated/server";
 import type { Doc, Id } from "../_generated/dataModel";
 
 /**
- * Product CRUD (PH1-07) — the editor's backend: `get` loads one product
- * WITH its applicable attribute definitions and stored values (the editor
- * renders from one call), `create`/`update`/`remove` enforce every rule
- * server-side.
+ * Product CRUD + list backend (PH1-07/08) — the editor's backend: `get`
+ * loads one product WITH its applicable attribute definitions and stored
+ * values (the editor renders from one call), `create`/`update`/`remove`
+ * enforce every rule server-side, and `list`/`brands`/`bulkStatus` serve
+ * the PH1-08 product table.
  *
  * Rules enforced HERE (never only in UI — docs/permissions.md rule 1):
  * - name 1-100; SKU = `validateSku` from `lib/sku` (PH1-06) — format errors
@@ -48,8 +49,6 @@ import type { Doc, Id } from "../_generated/dataModel";
  * identity/commercial snapshot (+ valueCount); descriptions stay out of
  * snapshots (long HTML would bloat every entry — the entry itself records
  * that they changed).
- *
- * List/filter/search is PH1-08 — this module deliberately ships no `list`.
  */
 
 const MAX_NAME = 100;
@@ -662,5 +661,198 @@ export const remove = auditedMutation({
       result: undefined,
       audit: { entityId: args.id, before: auditSnapshot(row, values.length) },
     };
+  },
+});
+
+/* ------------------------------------------------------------ list (PH1-08) */
+
+/** The flag columns the list can filter on (AND semantics: all selected must hold). */
+type FlagKey =
+  "serialTracked" | "lotTracked" | "expiryRequired" | "warrantyEligible" | "allowBackorder";
+
+/** Sortable column keys — the DataTable's `sortable` columns map 1:1. */
+type SortKey = "name" | "sku" | "brand" | "status" | "updatedAt";
+
+type ListSort = { key: SortKey; direction: "asc" | "desc" };
+
+/** Case-insensitive text compare that treats missing optionals as empty. */
+function compareText(a: string | undefined, b: string | undefined): number {
+  const left = (a ?? "").toLowerCase();
+  const right = (b ?? "").toLowerCase();
+  return left < right ? -1 : left > right ? 1 : 0;
+}
+
+/**
+ * The product list behind the PH1-08 admin table: filters (category, brand,
+ * status, tracking flags), search across name/SKU/barcode, column sort, and
+ * a bounded page.
+ *
+ * Shape notes:
+ * - One full scan, filtered and sorted in memory — the same "bounded
+ *   admin read" rationale as `categories.stats` (PH1-02) and the audit
+ *   filters (PH0-26): the single-company products table is small, and
+ *   search is a SUBSTRING match over three fields, which no index serves
+ *   (a Convex search index exposes one searchable field — name/SKU/barcode
+ *   would need three queries merged; revisit if catalogs ever outgrow
+ *   this).
+ * - Category membership reads `categoryIds` (the source of truth —
+ *   PH1-05), not the `productCategories` join: we already hold every row,
+ *   so the join would only matter for index-driven scans, and reading the
+ *   truth means a stale join can't hide a product from staff.
+ * - Default order is newest first (`_creationTime` desc); ties break on
+ *   `_id` ascending so pagination never reshuffles rows that share a sort
+ *   key (bulk edits stamp identical `updatedAt` values).
+ * - `limit` clamps to 1..200 (default 50) so a client can't pull the whole
+ *   catalog in one response.
+ */
+export const list = query({
+  args: {
+    search: v.optional(v.string()),
+    categoryId: v.optional(v.id("categories")),
+    brand: v.optional(v.string()),
+    status: v.optional(v.union(v.literal("draft"), v.literal("active"), v.literal("archived"))),
+    flags: v.optional(
+      v.array(
+        v.union(
+          v.literal("serialTracked"),
+          v.literal("lotTracked"),
+          v.literal("expiryRequired"),
+          v.literal("warrantyEligible"),
+          v.literal("allowBackorder"),
+        ),
+      ),
+    ),
+    sort: v.optional(
+      v.object({
+        key: v.union(
+          v.literal("name"),
+          v.literal("sku"),
+          v.literal("brand"),
+          v.literal("status"),
+          v.literal("updatedAt"),
+        ),
+        direction: v.union(v.literal("asc"), v.literal("desc")),
+      }),
+    ),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    await requirePermission(ctx, "catalog", "view");
+
+    const needle = (args.search ?? "").trim().toLowerCase();
+    const flags: FlagKey[] = args.flags ?? [];
+    const sort: ListSort | undefined = args.sort;
+    const rows = await ctx.db.query("products").collect();
+    const matches = rows.filter(
+      (row) =>
+        (args.status === undefined || row.status === args.status) &&
+        (args.brand === undefined || row.brand === args.brand) &&
+        (args.categoryId === undefined || row.categoryIds.includes(args.categoryId)) &&
+        flags.every((flag) => row[flag] === true) &&
+        (needle === "" ||
+          [row.name, row.sku, row.barcode ?? ""].some((field) =>
+            field.toLowerCase().includes(needle),
+          )),
+    );
+
+    const direction = sort === undefined || sort.direction === "desc" ? -1 : 1;
+    matches.sort((a, b) => {
+      const primary =
+        sort === undefined
+          ? a._creationTime - b._creationTime
+          : sort.key === "updatedAt"
+            ? a.updatedAt - b.updatedAt
+            : compareText(a[sort.key], b[sort.key]);
+      if (primary !== 0) return primary * direction;
+      return a._id < b._id ? -1 : a._id > b._id ? 1 : 0;
+    });
+
+    const requested = args.limit ?? 50;
+    const limit = Number.isFinite(requested)
+      ? Math.min(Math.max(Math.trunc(requested), 1), 200)
+      : 50;
+    return {
+      rows: matches.slice(0, limit),
+      total: matches.length,
+      hasMore: matches.length > limit,
+    };
+  },
+});
+
+/**
+ * Distinct non-empty brands for the list's brand filter — feeds the
+ * dropdown without a second round of state. Full scan by design (see
+ * `list`): brands are stored on the product row itself, so there is no
+ * index to read them from.
+ */
+export const brands = query({
+  args: {},
+  handler: async (ctx) => {
+    await requirePermission(ctx, "catalog", "view");
+    const rows = await ctx.db.query("products").collect();
+    const seen = new Set<string>();
+    for (const row of rows) {
+      if (row.brand !== undefined && row.brand !== "") seen.add(row.brand);
+    }
+    return [...seen].sort((a, b) => compareText(a, b) || (a < b ? -1 : 1));
+  },
+});
+
+/**
+ * Bulk status change for the PH1-08 table (Activate / Set draft / Archive
+ * on a selection).
+ *
+ * - `catalog.edit` (same ladder as `products.update`).
+ * - Every id must resolve BEFORE anything is patched — a vanished product
+ *   fails the whole batch, so a selection can never half-apply.
+ * - One audit entry per CHANGED product (`auditedMutation`'s single-entry
+ *   shape can't name a batch): rows already in the target status record
+ *   nothing and keep their `updatedAt` (PH0-30 no-op rule). The wrapper's
+ *   own entry is skipped (`audit: undefined`) because the per-row entries
+ *   ARE the trail.
+ * - Duplicate ids dedupe first, so a row can't be double-patched or
+ *   double-audited.
+ */
+export const bulkStatus = auditedMutation({
+  entity: "products",
+  action: "update",
+  args: {
+    ids: v.array(v.id("products")),
+    status: v.union(v.literal("draft"), v.literal("active"), v.literal("archived")),
+  },
+  handler: async (ctx, args) => {
+    await requirePermission(ctx, "catalog", "edit");
+    const ids = [...new Set(args.ids)];
+    if (ids.length === 0) {
+      return { result: { updated: 0, unchanged: 0 }, audit: undefined };
+    }
+    const rows: Product[] = [];
+    for (const id of ids) {
+      const row = await ctx.db.get(id);
+      if (row === null) {
+        throw new ConvexError("One of those products no longer exists.");
+      }
+      rows.push(row);
+    }
+
+    const now = Date.now();
+    let updated = 0;
+    let unchanged = 0;
+    for (const row of rows) {
+      if (row.status === args.status) {
+        unchanged += 1;
+        continue;
+      }
+      await ctx.db.patch(row._id, { status: args.status, updatedAt: now });
+      await appendAudit(ctx, {
+        entity: "products",
+        action: "update",
+        entityId: row._id,
+        before: { status: row.status },
+        after: { status: args.status },
+      });
+      updated += 1;
+    }
+    return { result: { updated, unchanged }, audit: undefined };
   },
 });

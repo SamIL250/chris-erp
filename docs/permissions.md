@@ -86,10 +86,11 @@ _When adding a module: add a row here first, then the permission constant, then 
   (PH1-03); `attributes.forCategory` (catalog.view),
   `attributeSets.list` (catalog.view), `attributeSets.create`
   (catalog.create), `attributeSets.update` (catalog.edit),
-  `attributeSets.remove` (catalog.delete) (PH1-04); `products.get`
-  (catalog.view), `products.create` (catalog.create),
-  `products.update` (catalog.edit), `products.remove` (catalog.delete)
-  (PH1-07).
+  `attributeSets.remove` (catalog.delete) (PH1-04); `products.get`,
+  `products.list`, `products.brands` (catalog.view),
+  `products.create` (catalog.create), `products.update`,
+  `products.bulkStatus` (catalog.edit), `products.remove`
+  (catalog.delete) (PH1-07, PH1-08).
   Self-service by design,
   no RBAC: `users.updateProfile`, `users.setAvatar`, `files.*`
   (uploader-or-settings.edit on remove), `notifications.*` (own rows).
