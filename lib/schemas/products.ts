@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { MAX_PRICE } from "../pricing";
 import { validateSku } from "../sku";
 
 /**
@@ -45,6 +46,20 @@ const countField = (max: number, label: string) =>
       `${label} must be a whole number between 0 and ${max}.`,
     );
 
+/**
+ * Prices (PH1-10): "" (unset) or a non-negative amount with up to 2
+ * decimals. The server enforces the same rules with exact wording
+ * (`normalizePrice` in convex/catalog/products.ts) — this gate just keeps
+ * invalid drafts from firing a round-trip.
+ */
+const priceField = (label: string) =>
+  z
+    .string()
+    .refine(
+      (value) => value === "" || (/^\d+(\.\d{1,2})?$/.test(value) && Number(value) <= MAX_PRICE),
+      `${label} must be a non-negative amount with up to 2 decimals.`,
+    );
+
 export const productSchema = z.object({
   name: z
     .string()
@@ -58,6 +73,8 @@ export const productSchema = z.object({
   }),
   barcode: z.string().max(64, "Barcode must be 64 characters or fewer."),
   brand: z.string().max(100, "Brand must be 100 characters or fewer."),
+  listPrice: priceField("List price"),
+  costPrice: priceField("Cost price"),
   shortDescription: z.string().max(300, "Short description must be 300 characters or fewer."),
   longDescription: z.string().max(100_000, "Long description must be 100000 characters or fewer."),
   status: z.enum(PRODUCT_STATUSES),
@@ -84,6 +101,8 @@ export function productDefaults(
     sku: string;
     barcode?: string;
     brand?: string;
+    listPrice?: number;
+    costPrice?: number;
     shortDescription?: string;
     longDescription?: string;
     status: ProductStatus;
@@ -106,6 +125,8 @@ export function productDefaults(
     sku: product?.sku ?? "",
     barcode: product?.barcode ?? "",
     brand: product?.brand ?? "",
+    listPrice: product?.listPrice !== undefined ? String(product.listPrice) : "",
+    costPrice: product?.costPrice !== undefined ? String(product.costPrice) : "",
     shortDescription: product?.shortDescription ?? "",
     longDescription: product?.longDescription ?? "",
     status: product?.status ?? "draft",

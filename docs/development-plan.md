@@ -2,8 +2,8 @@
 
 > **Companion to:** [`erp-research-and-features.md`](./erp-research-and-features.md) (research, decisions, feature priorities)
 > **Stack:** Next.js (App Router) · Convex · Untitled UI (components + icons) · Stripe · Resend · Tailwind v4
-> **Status:** Phase 1 🔄 in progress — attribute sets + Attributes admin UI shipped (4 / 25, Catalog & Inventory)
-> **Last updated:** 2026-10-05
+> **Status:** Phase 1 🔄 in progress — pricing fields shipped (10 / 25, Catalog & Inventory)
+> **Last updated:** 2026-10-20
 
 ---
 
@@ -35,7 +35,7 @@
 | Phase          | Focus                                              | Status         | Tasks   | Gate |
 | -------------- | -------------------------------------------------- | -------------- | ------- | ---- |
 | **Phase 0**    | Foundation (scaffold, auth, RBAC, settings, shell) | ✅ Complete    | 35 / 35 | ☑    |
-| **Phase 1**    | Catalog + Inventory core (schema-first)            | 🔨 In progress | 9 / 25  | ☐    |
+| **Phase 1**    | Catalog + Inventory core (schema-first)            | 🔨 In progress | 10 / 25 | ☐    |
 | **Phase 2**    | Sales & Procurement (O2C + P2P documents)          | ⬜ Not started | 0 / 29  | ☐    |
 | **Phase 3**    | Finance (double-entry, postings, reports)          | ⬜ Not started | 0 / 17  | ☐    |
 | **Phase 4**    | Ecommerce storefront (B2C + B2B portal)            | ⬜ Not started | 0 / 24  | ☐    |
@@ -184,7 +184,7 @@ chris-erp/
 - [x] **PH1-07** Product create/edit page: sections (Basic, Pricing, Attributes [dynamic from set — `attributes.forCategory` resolver shipped with PH1-04], Inventory/Tracking, Media, SEO), autosave draft, validation — _every write touching `categoryIds` must call `syncProductCategoryRows` in the same transaction (PH1-05's join; delete cleans `by_product` rows — PH1-15), and values rows go to `attributeValues` (PH1-05's typed columns); SKU validation = `validateSku`/`skuFormatError` from `lib/sku` (PH1-06) + org-wide uniqueness via `by_sku` `.unique()` at write — format errors surface verbatim like slug errors, no auto-derivation ever rewrites a typed SKU; product deletes must also run the PH1-06 category guard's inverse (clean `by_product` rows) and set every PH1-06 field explicitly (optional schema fields, writer always sends them)_ — shipped 2026-10-06: `catalog/products` get/create/update/remove (audited, permission-first), SKU verbatim + `by_sku` org-wide uniqueness, same-transaction `syncProductCategoryRows` on every `categoryIds` write, values full-replace diffed by value-key (absent arg = untouched), editor at `/catalog/products/new` + `/[id]` (sections, Tiptap sanitized at write, 1.5s autosave), `products.get` → null for missing ids, delete cleans `attributeValues.by_product`
 - [x] **PH1-08** Product list: reactive table — filter by category/brand/status/flags, search by name/SKU/barcode, bulk status change, column sort — _one bounded full scan serves every combo (substring search over three fields can't ride an index; a Convex search index exposes one searchable field, so name/SKU/barcode would need merging — revisit if catalogs outgrow it), category filter reads `categoryIds` (PH1-05 source of truth), sort ties break on `_id` so pagination never reshuffles, page window clamps 1..200; bulk change is one transaction that resolves every id first and audits per CHANGED row_ — shipped 2026-10-06: `catalog/products:list` + `:brands` + `:bulkStatus` (audited, `catalog.edit`), list page at `/catalog/products` replacing the redirect stub (DataTable: debounced search, category/brand/status/flags filters, column sort, selection-gated bulk bar)
 - [x] **PH1-09** Variants: option axes (from set attributes e.g. color/config) → variant matrix, per-variant SKU/price/barcode/track flags; product-level defaults fill variants — _axes are APPLICABLE Select attributes (same resolver the editor renders), matrix = cartesian product capped at 200 with the count named before any write; sync preserves exact-coordinate combinations with their edits, inserts new from product defaults, deletes orphans in ONE transaction — derived SKUs `<productSku>-TOKEN-TOKEN` (generation-time only; clash fails the whole reconcile naming the SKU), variant SKU unique org-wide ACROSS products+variants (a scan resolves one thing); matrix writes ride catalog.edit (rows are product-document entries); sync audits ONE product-level entry naming every removed row_ — shipped 2026-10-20: `variants` table + `catalog/variants:list|sync|update|remove`, option/type guards in `attributes.*`, variants page at `/catalog/products/[id]/variants` (axis chips, editable matrix, flags dropdown)
-- [ ] **PH1-10** Pricing fields: `listPrice`, `costPrice` (display only — true moving average cost computed in inventory/finance), margin % shown to staff roles
+- [x] **PH1-10** Pricing fields: `listPrice`, `costPrice` (display only — true moving average cost computed in inventory/finance), margin % shown to staff roles — _prices optional, finite, 0..MAX_PRICE (999999999.99 typo guard in `lib/pricing`, one cap shared with the variant price); cost is display-only (the moving-average cost arrives with inventory/finance) and margin derives at READ time (`marginPercent`, one decimal, negative margins shown not hidden — selling below cost is real); margin/cost are staff-side only: the storefront (PH4) must project listPrice alone; product `listPrice` is the variant override's display fallback (PH1-09 note, resolvePrice formalizes in PH2-07); prices ride the commercial audit snapshot + full-form no-op diff_ — shipped 2026-10-20: `listPrice`/`costPrice` on `products` (create/update validation, audit snapshot, update diff), `lib/pricing.ts` (MAX_PRICE + marginPercent), Pricing section in the editor filled (two inputs + live margin readout, negative in error color), facts panel rows, variants matrix price cell falls back to the product price, demo seed prices, 10 new tests → 193 total, E2E 19 checks
 - [ ] **PH1-11** Units of measure + conversions (each → box → case) with purchase/sales UoM — _base `unitOfMeasure` field landed with PH1-06; this task adds the conversions + doc-level UoM_
 - [ ] **PH1-12** Track flags + fields per product: `serialTracked`, `lotTracked`, `expiryRequired`, `warrantyEligible`, `warrantyMonths`, `shelfLifeDays`, `allowBackorder` — _all seven fields landed with PH1-06 (names final); this task adds the rules/behavior (hard blocks, defaults, UI)_
 - [ ] **PH1-13** Images via Convex storage (upload, reorder, cover image), alt text — _`images[]` field landed with PH1-06 (cover-first); this task adds the upload/reorder flow_
@@ -984,15 +984,66 @@ remove, audit visibility, delete cascade, SSR flight stub).
 **Next up:** PH1-10 — pricing fields (`listPrice`/`costPrice`, display-only
 margin).
 
-| Date       | Session         | Shipped (task IDs) | Decisions / notes                                                                                                          | Next up                            |
-| ---------- | --------------- | ------------------ | -------------------------------------------------------------------------------------------------------------------------- | ---------------------------------- |
-| 2026-10-04 | Plan created    | —                  | Research doc + development plan aligned with scoping decisions                                                             | Start Phase 0 (PH0-01…)            |
-| 2026-10-05 | Phase 1 start   | PH1-01             | Category tree backend; global unique slugs, computed paths, guarded moves                                                  | PH1-02 (category admin UI)         |
-| 2026-10-05 | Phase 1 (cont.) | PH1-02             | Category admin UI + stats; products core landed early (PH1-06 note); demo catalog seed (CT-03)                             | PH1-03 (attribute definitions)     |
-| 2026-10-05 | Phase 1 (cont.) | PH1-03             | Attribute definitions backend (type/unit/options shape rules); admin UI folded into PH1-04 (plan amended)                  | PH1-04 (attribute sets + admin UI) |
-| 2026-10-05 | Phase 1 (cont.) | PH1-04             | Attribute sets + `forCategory` inheritance resolver + Attributes admin UI; definitions delete guard                        | PH1-05 (storefront indexes)        |
-| 2026-10-05 | Phase 1 (cont.) | PH1-05             | urlPath + by_url_path, productCategories join (Convex: no array-contains index), attributeValues facets                    | PH1-06 (products table fields)     |
-| 2026-10-05 | Phase 1 (cont.) | PH1-06             | Products field manifest + by_barcode, lib/sku rules, categories.remove products guard; null-key finding                    | PH1-07 (product editor)            |
-| 2026-10-06 | Phase 1 (cont.) | PH1-07             | Product editor + CRUD: SKU verbatim + by_sku uniqueness, same-txn join sync, values diff, E2E 37 checks                    | PH1-08 (product list)              |
-| 2026-10-06 | Phase 1 (cont.) | PH1-08             | Product list: bounded-scan list query + brands facet + bulkStatus (per-changed-row audit), E2E 41 checks                   | PH1-09 (variants)                  |
-| 2026-10-20 | Phase 1 (cont.) | PH1-09             | Variant matrices: cartesian sync w/ preserve-by-coordinate + derived SKUs, SKU namespace shared w/ products, E2E 30 checks | PH1-10 (pricing fields)            |
+### 2026-10-20 · Phase 1 (PH1-10)
+
+Pricing fields landed — the two numbers staff enter today, and the one
+number they read off them:
+
+- **`products.listPrice` / `products.costPrice`** (both optional): the
+  sell price becomes the variant override's DISPLAY FALLBACK (the PH1-09
+  note — the matrix's price cell shows the product price when a row has
+  no override; `resolvePrice` formalizes the chain in PH2-07); cost is
+  DISPLAY-ONLY — the true moving-average cost is computed from stock
+  receipts once inventory/finance exist, so nothing derives accounting
+  numbers from it. Validation: finite, 0..MAX_PRICE (`lib/pricing.ts`,
+  999999999.99 — a typo guard, not a pricing policy); NaN/Infinity ride
+  the same "zero or more" error as negatives (Convex admits them, HTTP
+  can't send them, a direct caller can).
+- **Margin % is derived, never stored**: `marginPercent(list, cost)` in
+  `lib/pricing.ts` — (list − cost)/list × 100 rounded to one decimal,
+  `null` when a price is missing or the list price isn't positive (a
+  giveaway has no meaningful rate), and NEGATIVE margins display as-is in
+  the error color — selling below cost is real data, not something to
+  hide. Staff-side only: the editor's live readout + the facts panel;
+  the storefront (PH4) must project `listPrice` alone — noted in the
+  schema comment so the PH4 queries can't leak cost/margin by accident.
+- **Commercial snapshot + no-op diff**: prices join the audit
+  before/after identity (they're commercial fields, like barcode/brand),
+  participate in the full-form change detection (a price-only save is a
+  real edit; an identical save records nothing — PH0-30), and omitted
+  optionals clear like every other field.
+- **UI**: the Pricing section placeholder (PH1-07 reserved it) is now
+  live — list/cost inputs + a margin row that computes as you type;
+  ProductFacts gains List price / Cost price / Margin rows; the variants
+  matrix price cell shows the product default as the placeholder (edit)
+  and in tertiary text with a "Product list price (default)" title
+  (read-only). Demo seed products carry prices now (incl. one sold below
+  cost — the legacy monitor — so the negative margin is visible in demo
+  data).
+- **One cap, one family**: the variant price guard gained the same
+  MAX_PRICE cap (wording: "Variant price must be 999999999.99 or fewer.")
+  so product and variant prices can't diverge at the edges.
+
+**Pipeline**: prettier → tsc → lint → format:check → **193 tests / 28
+files** (+10 `pricing`: margin math, create/update/no-op/clear, verbatim
+guards, RBAC ladder; variants cap case added to the existing suite) →
+build → **HTTP E2E 19/19** (own fixtures, cleaned up: prices round-trip,
+guards verbatim, audit carries prices without margin, clear-on-omit,
+warehouse reads/can't-edit, anonymous blocked, variant cap + override +
+fallback, SSR editor page).
+
+**Next up:** PH1-11 — units of measure + conversions (each → box → case).
+
+| Date       | Session         | Shipped (task IDs) | Decisions / notes                                                                                                                              | Next up                            |
+| ---------- | --------------- | ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------- |
+| 2026-10-04 | Plan created    | —                  | Research doc + development plan aligned with scoping decisions                                                                                 | Start Phase 0 (PH0-01…)            |
+| 2026-10-05 | Phase 1 start   | PH1-01             | Category tree backend; global unique slugs, computed paths, guarded moves                                                                      | PH1-02 (category admin UI)         |
+| 2026-10-05 | Phase 1 (cont.) | PH1-02             | Category admin UI + stats; products core landed early (PH1-06 note); demo catalog seed (CT-03)                                                 | PH1-03 (attribute definitions)     |
+| 2026-10-05 | Phase 1 (cont.) | PH1-03             | Attribute definitions backend (type/unit/options shape rules); admin UI folded into PH1-04 (plan amended)                                      | PH1-04 (attribute sets + admin UI) |
+| 2026-10-05 | Phase 1 (cont.) | PH1-04             | Attribute sets + `forCategory` inheritance resolver + Attributes admin UI; definitions delete guard                                            | PH1-05 (storefront indexes)        |
+| 2026-10-05 | Phase 1 (cont.) | PH1-05             | urlPath + by_url_path, productCategories join (Convex: no array-contains index), attributeValues facets                                        | PH1-06 (products table fields)     |
+| 2026-10-05 | Phase 1 (cont.) | PH1-06             | Products field manifest + by_barcode, lib/sku rules, categories.remove products guard; null-key finding                                        | PH1-07 (product editor)            |
+| 2026-10-06 | Phase 1 (cont.) | PH1-07             | Product editor + CRUD: SKU verbatim + by_sku uniqueness, same-txn join sync, values diff, E2E 37 checks                                        | PH1-08 (product list)              |
+| 2026-10-06 | Phase 1 (cont.) | PH1-08             | Product list: bounded-scan list query + brands facet + bulkStatus (per-changed-row audit), E2E 41 checks                                       | PH1-09 (variants)                  |
+| 2026-10-20 | Phase 1 (cont.) | PH1-09             | Variant matrices: cartesian sync w/ preserve-by-coordinate + derived SKUs, SKU namespace shared w/ products, E2E 30 checks                     | PH1-10 (pricing fields)            |
+| 2026-10-20 | Phase 1 (cont.) | PH1-10             | Pricing fields: listPrice/costPrice + read-time margin % (staff-only display, negative shown), product price = variant fallback, E2E 19 checks | PH1-11 (UoM conversions)           |

@@ -207,6 +207,7 @@ export const seed = auditedMutation({
     // DEMO-… SKUs: 2 ultrasound (counted), monitor + archived legacy
     // (archived excluded from stats), centrifuges incl. a dual-category
     // kit, one uncategorized — exercises every bucket the page renders.
+    // Prices (PH1-10) make the demo data show real margins in the editor.
     const demoProducts = [
       {
         name: "Portable Ultrasound X5",
@@ -214,6 +215,8 @@ export const seed = auditedMutation({
         sku: "DEMO-1001",
         status: "active",
         cats: ["ultrasound-systems"],
+        listPrice: 24_500,
+        costPrice: 15_900,
       },
       {
         name: "Cart Ultrasound S3",
@@ -221,6 +224,8 @@ export const seed = auditedMutation({
         sku: "DEMO-1002",
         status: "active",
         cats: ["ultrasound-systems"],
+        listPrice: 38_000,
+        costPrice: 26_400,
       },
       {
         name: "Patient Monitor M7",
@@ -228,6 +233,8 @@ export const seed = auditedMutation({
         sku: "DEMO-1003",
         status: "active",
         cats: ["patient-monitors"],
+        listPrice: 1_850,
+        costPrice: 1_120,
       },
       {
         name: "Bench Centrifuge C2",
@@ -235,6 +242,8 @@ export const seed = auditedMutation({
         sku: "DEMO-1004",
         status: "draft",
         cats: ["centrifuges"],
+        listPrice: 3_200,
+        costPrice: 2_050,
       },
       {
         name: "Centrifuge Rotor Kit",
@@ -242,6 +251,8 @@ export const seed = auditedMutation({
         sku: "DEMO-1005",
         status: "active",
         cats: ["centrifuges", "lab-equipment"],
+        listPrice: 640,
+        costPrice: 385,
       },
       {
         name: "Lab Bench Stand",
@@ -249,6 +260,8 @@ export const seed = auditedMutation({
         sku: "DEMO-1006",
         status: "active",
         cats: [],
+        listPrice: 95,
+        costPrice: 41,
       },
       {
         name: "Legacy Patient Monitor",
@@ -256,6 +269,9 @@ export const seed = auditedMutation({
         sku: "DEMO-1007",
         status: "archived",
         cats: ["patient-monitors"],
+        // Sold below cost on clearance — exercises the negative-margin display.
+        listPrice: 600,
+        costPrice: 780,
       },
     ] as const;
     const existingSkus = new Set((await ctx.db.query("products").collect()).map((row) => row.sku));
@@ -269,6 +285,8 @@ export const seed = auditedMutation({
         slug: product.slug,
         sku: product.sku,
         status: product.status,
+        listPrice: product.listPrice,
+        costPrice: product.costPrice,
         categoryIds,
         createdAt: now,
         updatedAt: now,

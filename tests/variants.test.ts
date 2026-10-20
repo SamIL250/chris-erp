@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 import { api } from "../convex/_generated/api";
 import type { Id } from "../convex/_generated/dataModel";
+import { MAX_PRICE } from "../lib/pricing";
 import { setup } from "./setup";
 
 /**
@@ -538,6 +539,14 @@ describe("variants:update (PH1-09)", () => {
         listPrice: -1,
       }),
     ).rejects.toThrow("Variant price must be zero or more.");
+    await expect(
+      asOwner.mutation(api.catalog.variants.update, {
+        ...base,
+        id: red!._id,
+        sku: red!.sku,
+        listPrice: MAX_PRICE + 0.01,
+      }),
+    ).rejects.toThrow(`Variant price must be ${MAX_PRICE} or fewer.`);
     await expect(
       asOwner.mutation(api.catalog.variants.update, {
         ...base,

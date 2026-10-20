@@ -347,6 +347,20 @@ export default defineSchema({
     /** Scanned lookups — optional; `eq` on a real value skips blank rows. */
     barcode: v.optional(v.string()),
     brand: v.optional(v.string()),
+    /**
+     * Pricing (PH1-10): `listPrice` is the base sell price — the variant
+     * row's `listPrice` (PH1-09) OVERRIDES it per combination, and this is
+     * its display fallback; price resolution (PH2-07) walks customer →
+     * group → list from here. `costPrice` is a manual, DISPLAY-ONLY figure
+     * (margin previews in staff UI); the true moving-average cost is
+     * computed from stock receipts once inventory/finance exist — never
+     * derive accounting numbers from this field. Margin % is derived at
+     * read time (lib/pricing), never stored, and staff-side only: the
+     * storefront (PH4) must project `listPrice` alone — cost/margin never
+     * reach customers.
+     */
+    listPrice: v.optional(v.number()),
+    costPrice: v.optional(v.number()),
     /** One-line storefront/teaser copy (PH1-07 validates the length). */
     shortDescription: v.optional(v.string()),
     /** Rich detail copy — HTML, sanitized by the writer (PH1-07). */
@@ -431,9 +445,10 @@ export default defineSchema({
    *
    * "Product-level defaults fill variants": the five track flags are COPIED
    * from the product at generation and editable per-variant afterwards;
-   * `listPrice` is a pure override (the product-level `listPrice` arrives
-   * with PH1-10 and becomes its display fallback). Status is deliberately
-   * absent — variants inherit product lifecycle; per-variant states revisit
+   * `listPrice` is a pure override of the product-level `listPrice`
+   * (PH1-10) — absent = the product's price shows (editor placeholder,
+   * read cell); resolvePrice (PH2-07) formalizes the fallback. Status is
+   * deliberately absent — variants inherit product lifecycle; per-variant states revisit
    * with PH1-15's archive.
    */
   variants: defineTable({

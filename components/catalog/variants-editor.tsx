@@ -268,7 +268,9 @@ export function VariantsEditor({ id }: { id: string }) {
               aria-label={`Price ${variant.sku}`}
               size="sm"
               type="number"
-              placeholder="—"
+              // Absent override → the product's listPrice is the fallback
+              // (PH1-10) — shown as the placeholder, never stored on the row.
+              placeholder={row.listPrice !== undefined ? String(row.listPrice) : "—"}
               defaultValue={variant.listPrice === undefined ? "" : String(variant.listPrice)}
               onBlur={(event) => {
                 const raw = event.currentTarget.value.trim();
@@ -280,10 +282,14 @@ export function VariantsEditor({ id }: { id: string }) {
               }}
             />
           </div>
-        ) : (
-          <span className="text-secondary text-sm">
-            {variant.listPrice === undefined ? "—" : String(variant.listPrice)}
+        ) : variant.listPrice !== undefined ? (
+          <span className="text-secondary text-sm">{String(variant.listPrice)}</span>
+        ) : row.listPrice !== undefined ? (
+          <span className="text-tertiary text-sm" title="Product list price (default)">
+            {row.listPrice}
           </span>
+        ) : (
+          <span className="text-secondary text-sm">—</span>
         ),
     },
     { id: "flags", header: "Flags", cell: flagsCell },

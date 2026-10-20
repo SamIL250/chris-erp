@@ -95,6 +95,11 @@ _When adding a module: add a row here first, then the permission constant, then 
   `variants.update`, `variants.remove` (catalog.edit — variant rows are
   product-document matrix entries, so row-level changes ride the edit
   ladder like the sync that manages them) (PH1-09).
+  Pricing visibility (PH1-10): prices ride the existing
+  `products.create`/`products.update` (no new gate), and every role that
+  can view the catalog sees `listPrice`/`costPrice`/margin in the admin —
+  cost and margin are STAFF-SIDE ONLY: storefront queries (PH4) must
+  project `listPrice` alone, never cost or derived margin.
   Self-service by design,
   no RBAC: `users.updateProfile`, `users.setAvatar`, `files.*`
   (uploader-or-settings.edit on remove), `notifications.*` (own rows).

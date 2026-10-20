@@ -1,4 +1,5 @@
 import { ConvexError, v } from "convex/values";
+import { MAX_PRICE } from "../../lib/pricing";
 import { SKU_MAX_LENGTH, validateSku } from "../../lib/sku";
 import { auditedMutation } from "../_lib/audit";
 import { requirePermission } from "../_lib/permissions";
@@ -31,7 +32,8 @@ import type { Doc, Id } from "../_generated/dataModel";
  *   PRODUCTS — a scan must resolve to exactly one thing, so `by_sku`
  *   probes both tables (the product's own parent SKU included).
  * - Barcode optional (same trim/64-cap as products, no uniqueness — the
- *   PH1-06 call); price must be zero-or-more; the five track flags are
+ *   PH1-06 call); price must be 0..MAX_PRICE (lib/pricing — same cap as
+ *   the product's listPrice/costPrice, PH1-10); the five track flags are
  *   full-form booleans (legacy rows read as `false`).
  *
  * Permissions: read → catalog.view; every write → catalog.edit. Variant
@@ -352,6 +354,9 @@ export const update = auditedMutation({
     const barcode = normalizeBarcode(args.barcode);
     if (args.listPrice !== null && (!Number.isFinite(args.listPrice) || args.listPrice < 0)) {
       throw new ConvexError("Variant price must be zero or more.");
+    }
+    if (args.listPrice !== null && args.listPrice > MAX_PRICE) {
+      throw new ConvexError(`Variant price must be ${MAX_PRICE} or fewer.`);
     }
     const listPrice = args.listPrice === null ? undefined : args.listPrice;
 

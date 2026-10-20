@@ -24,6 +24,7 @@ import { api } from "@/convex/_generated/api";
 import type { Doc, Id } from "@/convex/_generated/dataModel";
 import { orderApplicableAttributes } from "@/lib/attributes";
 import { toUserMessage } from "@/lib/errors";
+import { marginPercent } from "@/lib/pricing";
 import { ATTRIBUTE_TYPE_LABELS } from "@/lib/schemas/attributes";
 import {
   PRODUCT_STATUS_LABELS,
@@ -234,6 +235,8 @@ export function ProductForm({
         sku: values.sku,
         barcode: values.barcode.trim() === "" ? undefined : values.barcode.trim(),
         brand: values.brand.trim() === "" ? undefined : values.brand.trim(),
+        listPrice: values.listPrice.trim() === "" ? undefined : Number(values.listPrice),
+        costPrice: values.costPrice.trim() === "" ? undefined : Number(values.costPrice),
         shortDescription:
           values.shortDescription.trim() === "" ? undefined : values.shortDescription,
         longDescription: values.longDescription.trim() === "" ? undefined : values.longDescription,
@@ -354,6 +357,12 @@ export function ProductForm({
             : "";
 
   const status = methods.watch("status");
+  // Pricing (PH1-10): margin derives from the two watched price fields —
+  // the server never stores it, and null hides the row rather than faking 0.
+  const margin = marginPercent(
+    methods.watch("listPrice") === "" ? undefined : Number(methods.watch("listPrice")),
+    methods.watch("costPrice") === "" ? undefined : Number(methods.watch("costPrice")),
+  );
 
   return (
     <div className="flex max-w-3xl flex-col gap-6">
@@ -487,10 +496,35 @@ export function ProductForm({
 
         {/* ----------------------------------------------------- Pricing */}
         <Section title="Pricing" description="What customers pay and what stock costs.">
-          <p className="text-secondary text-sm">
-            Pricing fields — list price, cost, currency rules, and price lists — arrive with PH1-10.
-            They live here so the section’s place in the editor is settled now.
-          </p>
+          <div className="grid gap-5 sm:grid-cols-2">
+            <FormInput
+              name="listPrice"
+              label="List price"
+              placeholder="499.00"
+              hint="Base sell price — variants override it per combination (PH1-09)."
+            />
+            <FormInput
+              name="costPrice"
+              label="Cost price"
+              placeholder="320.00"
+              hint="Display-only reference cost — the moving average computed from stock receipts takes over in inventory/finance."
+            />
+          </div>
+          <div className="bg-secondary flex items-center justify-between rounded-xl px-4 py-3">
+            <span className="text-secondary text-sm">Margin</span>
+            {margin === null ? (
+              <span className="text-tertiary text-sm">Set list &amp; cost price to see margin</span>
+            ) : (
+              <span
+                className={cx(
+                  "text-sm font-medium",
+                  margin < 0 ? "text-fg-error-primary" : "text-fg-success-primary",
+                )}
+              >
+                {margin.toFixed(1)}%
+              </span>
+            )}
+          </div>
         </Section>
 
         {/* --------------------------------------------------- Attributes */}
@@ -835,6 +869,8 @@ export function ProductFacts({
     .filter(([, on]) => on === true)
     .map(([label]) => label);
 
+  const margin = marginPercent(product.listPrice, product.costPrice);
+
   const facts: { label: string; value: React.ReactNode }[] = [
     { label: "SKU", value: <span className="font-mono text-xs">{product.sku}</span> },
     { label: "Slug", value: <span className="font-mono text-xs">/{product.slug}</span> },
@@ -843,6 +879,15 @@ export function ProductFacts({
     ...(product.barcode
       ? [{ label: "Barcode", value: <span className="font-mono text-xs">{product.barcode}</span> }]
       : []),
+    ...(product.listPrice !== undefined
+      ? [{ label: "List price", value: String(product.listPrice) }]
+      : []),
+    // Cost + margin are staff-side only (PH1-10) — the storefront (PH4)
+    // projects listPrice alone, so nothing here can leak to customers.
+    ...(product.costPrice !== undefined
+      ? [{ label: "Cost price", value: String(product.costPrice) }]
+      : []),
+    ...(margin !== null ? [{ label: "Margin", value: `${margin.toFixed(1)}%` }] : []),
     ...(product.taxCategory
       ? [{ label: "Tax category", value: TAX_CATEGORY_LABELS[product.taxCategory] }]
       : []),

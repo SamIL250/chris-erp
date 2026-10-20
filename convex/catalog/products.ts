@@ -1,4 +1,5 @@
 import { ConvexError, v } from "convex/values";
+import { MAX_PRICE } from "../../lib/pricing";
 import { sanitizeRichText } from "../../lib/richText";
 import { validateSku } from "../../lib/sku";
 import { appendAudit, auditedMutation } from "../_lib/audit";
@@ -28,6 +29,10 @@ import type { Doc, Id } from "../_generated/dataModel";
  *   self-heals)
  * - `longDescription` is sanitized at write (`lib/richText`) — the store can
  *   render it as-is later (PH4-04), because no render path can skip this one
+ * - pricing (PH1-10): `listPrice`/`costPrice` optional, finite, 0..MAX_PRICE
+ *   (`lib/pricing` — typo guard); cost is DISPLAY-ONLY (the moving-average
+ *   cost arrives with inventory/finance), margin % derives at read time and
+ *   is staff-side — the storefront projects listPrice alone
  * - `attributeValues` (when present) validate against `applicableAttributes`
  *   — the SAME resolver the editor renders from (`lib/attributes.ts` pure
  *   ordering) — one row per value in the definition's typed column
@@ -86,6 +91,8 @@ type ProductArgs = {
   sku: string;
   barcode?: string;
   brand?: string;
+  listPrice?: number;
+  costPrice?: number;
   shortDescription?: string;
   longDescription?: string;
   status: "draft" | "active" | "archived";
@@ -133,6 +140,23 @@ function normalizeCount(value: number | undefined, max: number, label: string): 
   if (value === undefined) return undefined;
   if (!Number.isInteger(value) || value < 0 || value > max) {
     throw new ConvexError(`${label} must be a whole number between 0 and ${max}.`);
+  }
+  return value;
+}
+
+/**
+ * Prices (PH1-10): optional, finite, 0..MAX_PRICE — the cap is a typo
+ * guard, not a pricing policy. NaN/Infinity ride the same error as a
+ * negative (Convex v.number() admits them; HTTP/JSON can't send them, but
+ * a direct caller can).
+ */
+function normalizePrice(value: number | undefined, label: string): number | undefined {
+  if (value === undefined) return undefined;
+  if (!Number.isFinite(value) || value < 0) {
+    throw new ConvexError(`${label} must be zero or more.`);
+  }
+  if (value > MAX_PRICE) {
+    throw new ConvexError(`${label} must be ${MAX_PRICE} or fewer.`);
   }
   return value;
 }
@@ -337,6 +361,8 @@ async function normalizeProductInput(
     sku,
     barcode: normalizeOptional(args.barcode, MAX_BARCODE, "Barcode"),
     brand: normalizeOptional(args.brand, MAX_BRAND, "Brand"),
+    listPrice: normalizePrice(args.listPrice, "List price"),
+    costPrice: normalizePrice(args.costPrice, "Cost price"),
     shortDescription: normalizeOptional(
       args.shortDescription,
       MAX_SHORT_DESCRIPTION,
@@ -373,6 +399,8 @@ function auditSnapshot(
     status: source.status,
     barcode: source.barcode,
     brand: source.brand,
+    listPrice: source.listPrice,
+    costPrice: source.costPrice,
     taxCategory: source.taxCategory,
     categoryIds: source.categoryIds,
     attributeSetIds: source.attributeSetIds ?? [],
@@ -392,6 +420,8 @@ const PRODUCT_ARGS = {
   sku: v.string(),
   barcode: v.optional(v.string()),
   brand: v.optional(v.string()),
+  listPrice: v.optional(v.number()),
+  costPrice: v.optional(v.number()),
   shortDescription: v.optional(v.string()),
   longDescription: v.optional(v.string()),
   status: v.union(v.literal("draft"), v.literal("active"), v.literal("archived")),
@@ -472,6 +502,8 @@ export const create = auditedMutation({
       sku: product.sku,
       barcode: product.barcode,
       brand: product.brand,
+      listPrice: product.listPrice,
+      costPrice: product.costPrice,
       shortDescription: product.shortDescription,
       longDescription: product.longDescription,
       status: product.status,
@@ -532,6 +564,8 @@ export const update = auditedMutation({
       product.sku !== row.sku ||
       product.barcode !== row.barcode ||
       product.brand !== row.brand ||
+      product.listPrice !== row.listPrice ||
+      product.costPrice !== row.costPrice ||
       product.shortDescription !== row.shortDescription ||
       product.longDescription !== row.longDescription ||
       product.status !== row.status ||
@@ -583,6 +617,8 @@ export const update = auditedMutation({
       sku: product.sku,
       barcode: product.barcode,
       brand: product.brand,
+      listPrice: product.listPrice,
+      costPrice: product.costPrice,
       shortDescription: product.shortDescription,
       longDescription: product.longDescription,
       status: product.status,
