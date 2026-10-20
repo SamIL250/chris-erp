@@ -35,7 +35,7 @@
 | Phase          | Focus                                              | Status         | Tasks   | Gate |
 | -------------- | -------------------------------------------------- | -------------- | ------- | ---- |
 | **Phase 0**    | Foundation (scaffold, auth, RBAC, settings, shell) | ✅ Complete    | 35 / 35 | ☑    |
-| **Phase 1**    | Catalog + Inventory core (schema-first)            | 🔨 In progress | 8 / 25  | ☐    |
+| **Phase 1**    | Catalog + Inventory core (schema-first)            | 🔨 In progress | 9 / 25  | ☐    |
 | **Phase 2**    | Sales & Procurement (O2C + P2P documents)          | ⬜ Not started | 0 / 29  | ☐    |
 | **Phase 3**    | Finance (double-entry, postings, reports)          | ⬜ Not started | 0 / 17  | ☐    |
 | **Phase 4**    | Ecommerce storefront (B2C + B2B portal)            | ⬜ Not started | 0 / 24  | ☐    |
@@ -183,7 +183,7 @@ chris-erp/
 - [x] **PH1-06** `products` table: name, slug, SKU, barcode, brand, short/long description (rich), status (draft/active/archived), taxCategory, track flags, warranty/shelf-life fields, UoM, images[], categoryIds[], attributeSetIds[] — _core identity/lifecycle fields (name, slug, SKU, status, categoryIds + indexes) + the table itself landed early with PH1-02 because its counts/uncategorized stats read it; this task adds the remaining fields and the SKU rules_ — shipped 2026-10-05: full field manifest (all optional so pre-PH1-06 rows keep reading) + `by_barcode`, `lib/sku.ts` format rules (scope call: rules module only — uniqueness enforced by PH1-07's mutations), `categories.remove` products-reference guard (the check promised in PH1-02)
 - [x] **PH1-07** Product create/edit page: sections (Basic, Pricing, Attributes [dynamic from set — `attributes.forCategory` resolver shipped with PH1-04], Inventory/Tracking, Media, SEO), autosave draft, validation — _every write touching `categoryIds` must call `syncProductCategoryRows` in the same transaction (PH1-05's join; delete cleans `by_product` rows — PH1-15), and values rows go to `attributeValues` (PH1-05's typed columns); SKU validation = `validateSku`/`skuFormatError` from `lib/sku` (PH1-06) + org-wide uniqueness via `by_sku` `.unique()` at write — format errors surface verbatim like slug errors, no auto-derivation ever rewrites a typed SKU; product deletes must also run the PH1-06 category guard's inverse (clean `by_product` rows) and set every PH1-06 field explicitly (optional schema fields, writer always sends them)_ — shipped 2026-10-06: `catalog/products` get/create/update/remove (audited, permission-first), SKU verbatim + `by_sku` org-wide uniqueness, same-transaction `syncProductCategoryRows` on every `categoryIds` write, values full-replace diffed by value-key (absent arg = untouched), editor at `/catalog/products/new` + `/[id]` (sections, Tiptap sanitized at write, 1.5s autosave), `products.get` → null for missing ids, delete cleans `attributeValues.by_product`
 - [x] **PH1-08** Product list: reactive table — filter by category/brand/status/flags, search by name/SKU/barcode, bulk status change, column sort — _one bounded full scan serves every combo (substring search over three fields can't ride an index; a Convex search index exposes one searchable field, so name/SKU/barcode would need merging — revisit if catalogs outgrow it), category filter reads `categoryIds` (PH1-05 source of truth), sort ties break on `_id` so pagination never reshuffles, page window clamps 1..200; bulk change is one transaction that resolves every id first and audits per CHANGED row_ — shipped 2026-10-06: `catalog/products:list` + `:brands` + `:bulkStatus` (audited, `catalog.edit`), list page at `/catalog/products` replacing the redirect stub (DataTable: debounced search, category/brand/status/flags filters, column sort, selection-gated bulk bar)
-- [ ] **PH1-09** Variants: option axes (from set attributes e.g. color/config) → variant matrix, per-variant SKU/price/barcode/track flags; product-level defaults fill variants
+- [x] **PH1-09** Variants: option axes (from set attributes e.g. color/config) → variant matrix, per-variant SKU/price/barcode/track flags; product-level defaults fill variants — _axes are APPLICABLE Select attributes (same resolver the editor renders), matrix = cartesian product capped at 200 with the count named before any write; sync preserves exact-coordinate combinations with their edits, inserts new from product defaults, deletes orphans in ONE transaction — derived SKUs `<productSku>-TOKEN-TOKEN` (generation-time only; clash fails the whole reconcile naming the SKU), variant SKU unique org-wide ACROSS products+variants (a scan resolves one thing); matrix writes ride catalog.edit (rows are product-document entries); sync audits ONE product-level entry naming every removed row_ — shipped 2026-10-20: `variants` table + `catalog/variants:list|sync|update|remove`, option/type guards in `attributes.*`, variants page at `/catalog/products/[id]/variants` (axis chips, editable matrix, flags dropdown)
 - [ ] **PH1-10** Pricing fields: `listPrice`, `costPrice` (display only — true moving average cost computed in inventory/finance), margin % shown to staff roles
 - [ ] **PH1-11** Units of measure + conversions (each → box → case) with purchase/sales UoM — _base `unitOfMeasure` field landed with PH1-06; this task adds the conversions + doc-level UoM_
 - [ ] **PH1-12** Track flags + fields per product: `serialTracked`, `lotTracked`, `expiryRequired`, `warrantyEligible`, `warrantyMonths`, `shelfLifeDays`, `allowBackorder` — _all seven fields landed with PH1-06 (names final); this task adds the rules/behavior (hard blocks, defaults, UI)_
@@ -924,16 +924,75 @@ _Move into a phase only via explicit re-prioritization._
 - Sidebar/nav unchanged: `/catalog` still redirects to Categories (the
   PH1-04 note's promise); Products entries already pointed at the index.
 
-**Next up:** PH1-09 — variants (option axes → variant matrix).
+### 2026-10-20 · Phase 1 (PH1-09)
 
-| Date       | Session         | Shipped (task IDs) | Decisions / notes                                                                                         | Next up                            |
-| ---------- | --------------- | ------------------ | --------------------------------------------------------------------------------------------------------- | ---------------------------------- |
-| 2026-10-04 | Plan created    | —                  | Research doc + development plan aligned with scoping decisions                                            | Start Phase 0 (PH0-01…)            |
-| 2026-10-05 | Phase 1 start   | PH1-01             | Category tree backend; global unique slugs, computed paths, guarded moves                                 | PH1-02 (category admin UI)         |
-| 2026-10-05 | Phase 1 (cont.) | PH1-02             | Category admin UI + stats; products core landed early (PH1-06 note); demo catalog seed (CT-03)            | PH1-03 (attribute definitions)     |
-| 2026-10-05 | Phase 1 (cont.) | PH1-03             | Attribute definitions backend (type/unit/options shape rules); admin UI folded into PH1-04 (plan amended) | PH1-04 (attribute sets + admin UI) |
-| 2026-10-05 | Phase 1 (cont.) | PH1-04             | Attribute sets + `forCategory` inheritance resolver + Attributes admin UI; definitions delete guard       | PH1-05 (storefront indexes)        |
-| 2026-10-05 | Phase 1 (cont.) | PH1-05             | urlPath + by_url_path, productCategories join (Convex: no array-contains index), attributeValues facets   | PH1-06 (products table fields)     |
-| 2026-10-05 | Phase 1 (cont.) | PH1-06             | Products field manifest + by_barcode, lib/sku rules, categories.remove products guard; null-key finding   | PH1-07 (product editor)            |
-| 2026-10-06 | Phase 1 (cont.) | PH1-07             | Product editor + CRUD: SKU verbatim + by_sku uniqueness, same-txn join sync, values diff, E2E 37 checks   | PH1-08 (product list)              |
-| 2026-10-06 | Phase 1 (cont.) | PH1-08             | Product list: bounded-scan list query + brands facet + bulkStatus (per-changed-row audit), E2E 41 checks  | PH1-09 (variants)                  |
+**Shipped**
+
+- **`variants` table** (schema): one row per option combination of the
+  product's `variantAxisIds` — `optionValues` pins one option per axis
+  (attributeId + stored label), plus SKU/barcode/listPrice and the five
+  track flags. Combination uniqueness within a product can't ride an index
+  (the PH1-05 array finding), so it's enforced in JS with a canonical key
+  (coordinates sorted by attributeId+value — axis ORDER doesn't matter).
+  Indexes: `by_product` (matrix page), `by_sku` (scan identity),
+  `by_barcode`. No status field — variants inherit product lifecycle
+  (PH1-15's archive revisits per-variant states).
+- **`catalog/variants:sync`** (`catalog.edit`, audited): validates axes
+  against the SAME `applicableAttributes` resolver the editor renders from
+  (Select-typed, non-empty options, assigned to the product), then
+  reconciles the whole matrix in ONE transaction: exact-coordinate
+  combinations are PRESERVED with their per-variant edits, new ones are
+  inserted with product-default flags and a derived SKU
+  `<productSku>-TOKEN-TOKEN` in axis order (the 32-char cap trims the
+  product part; the suffix always survives), orphans are deleted. The
+  cartesian count is computed and capped (200) BEFORE any write; a derived
+  SKU clash — in-batch, with any product/variant, even the parent itself —
+  fails the whole reconcile naming the SKU. Empty axes = "clear the
+  matrix" (a deliberate full-form operation).
+- **Audit shape**: `sync` returns ONE product-level entry (a matrix is a
+  product-document operation) whose after-snapshot carries the new axes,
+  the count, and the identity (SKU + coordinates) of every removed row —
+  deletions stay reconstructable without 200 per-row entries.
+  `update`/`remove` snapshot the single row like other editors; no-op
+  saves record nothing (PH0-30).
+- **`catalog/variants:update`** (full form, `catalog.edit`): SKU validated
+  with `validateSku` verbatim + uniqueness in ONE namespace shared with
+  PRODUCTS (`by_sku` probes both tables — a scan must resolve to exactly
+  one thing, parent SKU included); barcode same trim/64-cap as products
+  (no uniqueness — the PH1-06 call); `listPrice: nullable` (null clears);
+  the five flags explicit. `variants:remove` also rides `catalog.edit` —
+  rows are matrix entries of a product document, and `sync` deletes
+  orphans under the same ladder; `catalog.delete` keeps guarding whole
+  products.
+- **Guards extended** (`attributes.ts`): option removal, type change, and
+  definition removal are blocked while variants pin the definition (the
+  same "explicit beats an orphaned matrix" reasoning as the PH1-07 value
+  guard); `products.remove` deletes variant rows in the same transaction.
+- **UI**: `/catalog/products/[id]/variants` — axis chips (applicable
+  Select attributes with option counts + live combination preview vs the
+  200 cap), "Save axes & regenerate" (result toast), and the matrix table
+  (axis badges, SKU/barcode/price committing on blur, flags dropdown);
+  `catalog.view`-only roles get the same table read-only. A "Variants"
+  button in the product editor header links here once the product exists.
+
+**Pipeline**: prettier → tsc → lint → format:check → **183 tests / 27
+files** (+14 `variants`) → build → **HTTP E2E 30/30** (own fixtures,
+cleaned up: generation + defaults + derived SKUs, shared SKU namespace,
+verbatim errors, option/type guards, regeneration preservation, row
+remove, audit visibility, delete cascade, SSR flight stub).
+
+**Next up:** PH1-10 — pricing fields (`listPrice`/`costPrice`, display-only
+margin).
+
+| Date       | Session         | Shipped (task IDs) | Decisions / notes                                                                                                          | Next up                            |
+| ---------- | --------------- | ------------------ | -------------------------------------------------------------------------------------------------------------------------- | ---------------------------------- |
+| 2026-10-04 | Plan created    | —                  | Research doc + development plan aligned with scoping decisions                                                             | Start Phase 0 (PH0-01…)            |
+| 2026-10-05 | Phase 1 start   | PH1-01             | Category tree backend; global unique slugs, computed paths, guarded moves                                                  | PH1-02 (category admin UI)         |
+| 2026-10-05 | Phase 1 (cont.) | PH1-02             | Category admin UI + stats; products core landed early (PH1-06 note); demo catalog seed (CT-03)                             | PH1-03 (attribute definitions)     |
+| 2026-10-05 | Phase 1 (cont.) | PH1-03             | Attribute definitions backend (type/unit/options shape rules); admin UI folded into PH1-04 (plan amended)                  | PH1-04 (attribute sets + admin UI) |
+| 2026-10-05 | Phase 1 (cont.) | PH1-04             | Attribute sets + `forCategory` inheritance resolver + Attributes admin UI; definitions delete guard                        | PH1-05 (storefront indexes)        |
+| 2026-10-05 | Phase 1 (cont.) | PH1-05             | urlPath + by_url_path, productCategories join (Convex: no array-contains index), attributeValues facets                    | PH1-06 (products table fields)     |
+| 2026-10-05 | Phase 1 (cont.) | PH1-06             | Products field manifest + by_barcode, lib/sku rules, categories.remove products guard; null-key finding                    | PH1-07 (product editor)            |
+| 2026-10-06 | Phase 1 (cont.) | PH1-07             | Product editor + CRUD: SKU verbatim + by_sku uniqueness, same-txn join sync, values diff, E2E 37 checks                    | PH1-08 (product list)              |
+| 2026-10-06 | Phase 1 (cont.) | PH1-08             | Product list: bounded-scan list query + brands facet + bulkStatus (per-changed-row audit), E2E 41 checks                   | PH1-09 (variants)                  |
+| 2026-10-20 | Phase 1 (cont.) | PH1-09             | Variant matrices: cartesian sync w/ preserve-by-coordinate + derived SKUs, SKU namespace shared w/ products, E2E 30 checks | PH1-10 (pricing fields)            |

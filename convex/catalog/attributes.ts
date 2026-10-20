@@ -142,6 +142,32 @@ async function countValueProducts(
 }
 
 /**
+ * Distinct products whose VARIANTS reference a definition (PH1-09) — as a
+ * pinned option value on a `variants` row, or as a variant axis on the
+ * product row itself. Kept inline (not imported from `variants.ts`) so
+ * module imports stay one-way: `variants.ts` already imports
+ * `applicableAttributes` from here. Bounded admin-frequency scans, like the
+ * value checks below.
+ */
+async function countVariantProducts(
+  ctx: QueryCtx | MutationCtx,
+  attributeId: Id<"attributeDefinitions">,
+): Promise<number> {
+  const used = new Set<string>();
+  const variants = await ctx.db.query("variants").collect();
+  for (const row of variants) {
+    if (row.optionValues.some((entry) => entry.attributeId === attributeId)) {
+      used.add(row.productId);
+    }
+  }
+  const products = await ctx.db.query("products").collect();
+  for (const row of products) {
+    if ((row.variantAxisIds ?? []).includes(attributeId)) used.add(row._id);
+  }
+  return used.size;
+}
+
+/**
  * Definitions applicable to a product (PH1-07): the same ordering rule as
  * `forCategory`, widened to the union of every set covering ANY of the
  * product's categories plus the product's own `attributeSetIds` picks.
@@ -261,6 +287,42 @@ export const update = auditedMutation({
     const name = normalizeName(args.name);
     const { unit, options } = normalizeShape(args.type, args.unit, args.options);
 
+    // PH1-09's variant guard (same shape as the value guard above): a type
+    // change would strand variant axes and option pins on a definition that
+    // no longer expresses them.
+    if (args.type !== row.type) {
+      const used = await countVariantProducts(ctx, args.id);
+      if (used > 0) {
+        throw new ConvexError(
+          `This attribute is used in variants on ${used} product${used === 1 ? "" : "s"} — remove the variant setup there first.`,
+        );
+      }
+    }
+    // PH1-09's option guard: dropping an option strands the variants pinned
+    // to it (their combination can never validate again). Explicit beats a
+    // silently orphaned matrix — update or remove those variants first.
+    if (SELECT_TYPES.has(args.type)) {
+      const removedOptions = row.options.filter(
+        (option) => !options.some((next) => next.toLowerCase() === option.toLowerCase()),
+      );
+      if (removedOptions.length > 0) {
+        const variants = await ctx.db.query("variants").collect();
+        for (const option of removedOptions) {
+          const users = variants.filter((variant) =>
+            variant.optionValues.some(
+              (entry) =>
+                entry.attributeId === args.id && entry.value.toLowerCase() === option.toLowerCase(),
+            ),
+          );
+          if (users.length > 0) {
+            throw new ConvexError(
+              `Option "${option}" is used by ${users.length} variant${users.length === 1 ? "" : "s"} — update or remove those variants first.`,
+            );
+          }
+        }
+      }
+    }
+
     const before = { name: row.name, type: row.type, unit: row.unit, options: row.options };
     const after = { name, type: args.type, unit, options };
     const changed =
@@ -311,6 +373,14 @@ export const remove = auditedMutation({
     if (valueProducts > 0) {
       throw new ConvexError(
         `This attribute is used by ${valueProducts} product${valueProducts === 1 ? "" : "s"} — remove those values on the product first.`,
+      );
+    }
+    // PH1-09's variant check: variant axes and option pins reference the
+    // definition (same reasoning — removing it would orphan a matrix).
+    const variantProducts = await countVariantProducts(ctx, args.id);
+    if (variantProducts > 0) {
+      throw new ConvexError(
+        `This attribute is used in variants on ${variantProducts} product${variantProducts === 1 ? "" : "s"} — remove the variant setup there first.`,
       );
     }
     await ctx.db.delete(args.id);

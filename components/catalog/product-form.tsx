@@ -365,9 +365,16 @@ export function ProductForm({
             : "Catalog item — changes save automatically as you type."
         }
         actions={
-          <Badge color={status === "active" ? "brand" : "gray"} size="md">
-            {PRODUCT_STATUS_LABELS[status]}
-          </Badge>
+          <div className="flex items-center gap-3">
+            {targetId !== null ? (
+              <Button color="secondary" size="sm" href={`/catalog/products/${targetId}/variants`}>
+                Variants
+              </Button>
+            ) : null}
+            <Badge color={status === "active" ? "brand" : "gray"} size="md">
+              {PRODUCT_STATUS_LABELS[status]}
+            </Badge>
+          </div>
         }
       />
 

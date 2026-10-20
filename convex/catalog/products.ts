@@ -639,15 +639,23 @@ export const remove = auditedMutation({
       throw new ConvexError("This product no longer exists.");
     }
     // The inverse of the PH1-06 category guard / PH1-04 set guard: clean the
-    // join rows (PH1-05) and value rows (PH1-05 tables) so no ghost reference
-    // outlives the product. (Future referrers — stock, serials, work orders —
-    // block this delete instead; no such table exists yet.)
+    // join rows (PH1-05), value rows (PH1-05 tables), and variant rows
+    // (PH1-09) so no ghost reference outlives the product. (Future referrers
+    // — stock, serials, work orders — block this delete instead; no such
+    // table exists yet.)
     const values = await ctx.db
       .query("attributeValues")
       .withIndex("by_product", (q) => q.eq("productId", args.id))
       .collect();
     for (const value of values) {
       await ctx.db.delete(value._id);
+    }
+    const variants = await ctx.db
+      .query("variants")
+      .withIndex("by_product", (q) => q.eq("productId", args.id))
+      .collect();
+    for (const variant of variants) {
+      await ctx.db.delete(variant._id);
     }
     const joins = await ctx.db
       .query("productCategories")

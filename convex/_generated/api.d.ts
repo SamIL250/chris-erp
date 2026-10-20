@@ -23,6 +23,7 @@ import type * as catalog_attributeSets from "../catalog/attributeSets.js";
 import type * as catalog_attributes from "../catalog/attributes.js";
 import type * as catalog_categories from "../catalog/categories.js";
 import type * as catalog_products from "../catalog/products.js";
+import type * as catalog_variants from "../catalog/variants.js";
 import type * as currencies from "../currencies.js";
 import type * as files from "../files.js";
 import type * as formatting from "../formatting.js";
@@ -58,6 +59,7 @@ declare const fullApi: ApiFromModules<{
   "catalog/attributes": typeof catalog_attributes;
   "catalog/categories": typeof catalog_categories;
   "catalog/products": typeof catalog_products;
+  "catalog/variants": typeof catalog_variants;
   currencies: typeof currencies;
   files: typeof files;
   formatting: typeof formatting;

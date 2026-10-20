@@ -370,6 +370,15 @@ export default defineSchema({
     categoryIds: v.array(v.id("categories")),
     /** Product-level attribute sets (extra beyond category-inherited). */
     attributeSetIds: v.optional(v.array(v.id("attributeSets"))),
+    /**
+     * Variant axes (PH1-09): the subset of APPLICABLE Select attributes that
+     * vary this product ("Color", "Config") — the matrix is the cartesian
+     * product of their option lists, one `variants` row per combination.
+     * Written only by `variants:sync` (the Variants page), which validates
+     * each pick against the same applicability resolver the editor renders
+     * from, so a category move can't strand an axis unnoticed.
+     */
+    variantAxisIds: v.optional(v.array(v.id("attributeDefinitions"))),
     /** Storefront meta (PH1-07 validates 100/300 like categories). */
     seoTitle: v.optional(v.string()),
     seoDescription: v.optional(v.string()),
@@ -404,6 +413,52 @@ export default defineSchema({
   })
     .index("by_category", ["categoryId"])
     .index("by_product", ["productId"]),
+
+  /**
+   * Product variants (PH1-09): one row per option combination of the
+   * product's `variantAxisIds` — the matrix `variants:sync` reconciles
+   * (preserve matched combinations with their per-variant edits, insert
+   * new ones from product defaults, delete orphans).
+   *
+   * `optionValues` pins exactly one option per axis (attributeId + the
+   * stored option label). Convex can't index "contains this combination"
+   * (the PH1-05 array finding), so combination UNIQUENESS within a product
+   * is enforced in JS at write via a canonical key (coordinates sorted by
+   * attributeId + value). Lookups: the matrix page reads `by_product`; SKU
+   * is the scanning identity (warehouse/POS) and is unique org-wide across
+   * products AND variants via `by_sku` probes at write; barcode optional
+   * via `by_barcode` (no uniqueness — the same call as products, PH1-06).
+   *
+   * "Product-level defaults fill variants": the five track flags are COPIED
+   * from the product at generation and editable per-variant afterwards;
+   * `listPrice` is a pure override (the product-level `listPrice` arrives
+   * with PH1-10 and becomes its display fallback). Status is deliberately
+   * absent — variants inherit product lifecycle; per-variant states revisit
+   * with PH1-15's archive.
+   */
+  variants: defineTable({
+    productId: v.id("products"),
+    /** One pinned option per axis of the product's `variantAxisIds`. */
+    optionValues: v.array(
+      v.object({ attributeId: v.id("attributeDefinitions"), value: v.string() }),
+    ),
+    /** Normalized (trim+uppercase), 3–32, charset-checked by lib/sku. */
+    sku: v.string(),
+    barcode: v.optional(v.string()),
+    listPrice: v.optional(v.number()),
+    // Tracking flags — copied from the product at generation (PH1-09);
+    // per-variant from there on (PH1-12 activates the rules).
+    serialTracked: v.optional(v.boolean()),
+    lotTracked: v.optional(v.boolean()),
+    expiryRequired: v.optional(v.boolean()),
+    warrantyEligible: v.optional(v.boolean()),
+    allowBackorder: v.optional(v.boolean()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_product", ["productId"])
+    .index("by_sku", ["sku"])
+    .index("by_barcode", ["barcode"]),
 
   /**
    * Attribute definitions (PH1-03): the spec vocabulary products express
