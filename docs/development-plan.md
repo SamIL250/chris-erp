@@ -2,7 +2,7 @@
 
 > **Companion to:** [`erp-research-and-features.md`](./erp-research-and-features.md) (research, decisions, feature priorities)
 > **Stack:** Next.js (App Router) · Convex · Untitled UI (components + icons) · Stripe · Resend · Tailwind v4
-> **Status:** Phase 1 🔄 in progress — units of measure shipped (11 / 25, Catalog & Inventory)
+> **Status:** Phase 1 🔄 in progress — track-flag rules shipped (12 / 25, Catalog & Inventory)
 > **Last updated:** 2026-10-20
 
 ---
@@ -35,7 +35,7 @@
 | Phase          | Focus                                              | Status         | Tasks   | Gate |
 | -------------- | -------------------------------------------------- | -------------- | ------- | ---- |
 | **Phase 0**    | Foundation (scaffold, auth, RBAC, settings, shell) | ✅ Complete    | 35 / 35 | ☑    |
-| **Phase 1**    | Catalog + Inventory core (schema-first)            | 🔨 In progress | 11 / 25 | ☐    |
+| **Phase 1**    | Catalog + Inventory core (schema-first)            | 🔨 In progress | 12 / 25 | ☐    |
 | **Phase 2**    | Sales & Procurement (O2C + P2P documents)          | ⬜ Not started | 0 / 29  | ☐    |
 | **Phase 3**    | Finance (double-entry, postings, reports)          | ⬜ Not started | 0 / 17  | ☐    |
 | **Phase 4**    | Ecommerce storefront (B2C + B2B portal)            | ⬜ Not started | 0 / 24  | ☐    |
@@ -186,7 +186,7 @@ chris-erp/
 - [x] **PH1-09** Variants: option axes (from set attributes e.g. color/config) → variant matrix, per-variant SKU/price/barcode/track flags; product-level defaults fill variants — _axes are APPLICABLE Select attributes (same resolver the editor renders), matrix = cartesian product capped at 200 with the count named before any write; sync preserves exact-coordinate combinations with their edits, inserts new from product defaults, deletes orphans in ONE transaction — derived SKUs `<productSku>-TOKEN-TOKEN` (generation-time only; clash fails the whole reconcile naming the SKU), variant SKU unique org-wide ACROSS products+variants (a scan resolves one thing); matrix writes ride catalog.edit (rows are product-document entries); sync audits ONE product-level entry naming every removed row_ — shipped 2026-10-20: `variants` table + `catalog/variants:list|sync|update|remove`, option/type guards in `attributes.*`, variants page at `/catalog/products/[id]/variants` (axis chips, editable matrix, flags dropdown)
 - [x] **PH1-10** Pricing fields: `listPrice`, `costPrice` (display only — true moving average cost computed in inventory/finance), margin % shown to staff roles — _prices optional, finite, 0..MAX_PRICE (999999999.99 typo guard in `lib/pricing`, one cap shared with the variant price); cost is display-only (the moving-average cost arrives with inventory/finance) and margin derives at READ time (`marginPercent`, one decimal, negative margins shown not hidden — selling below cost is real); margin/cost are staff-side only: the storefront (PH4) must project listPrice alone; product `listPrice` is the variant override's display fallback (PH1-09 note, resolvePrice formalizes in PH2-07); prices ride the commercial audit snapshot + full-form no-op diff_ — shipped 2026-10-20: `listPrice`/`costPrice` on `products` (create/update validation, audit snapshot, update diff), `lib/pricing.ts` (MAX_PRICE + marginPercent), Pricing section in the editor filled (two inputs + live margin readout, negative in error color), facts panel rows, variants matrix price cell falls back to the product price, demo seed prices, 10 new tests → 193 total, E2E 19 checks
 - [x] **PH1-11** Units of measure + conversions (each → box → case) with purchase/sales UoM — _base `unitOfMeasure` field landed with PH1-06; this task adds the conversions + doc-level UoM_ — shipped 2026-11-05: per-product conversion CHAINS (`1 unit = factor × parent`, every chain terminating at the base — no global catalog: pack sizes are per-product by nature) + `purchaseUoM`/`salesUoM` doc-level defaults (must be the base or a conversion unit, so PH2 lines can always convert to base stock); codes normalize trim+lowercase (1–16, letters/digits + `.`/`-`) — one vocabulary across base/chain/doc fields; `lib/uom.ts` is the single validator+message source shared by the editor's build gate and the mutation (sku pattern); conversion rows diff as an ORDER-INSENSITIVE key set (reorder = no-op, no audit) and land in the audit snapshot; Inventory section gained the row editor (parent choices = base + other units, can't construct dangling chains) + doc-level selects; demo seed gives every product `unitOfMeasure: "each"` and the Lab Bench Stand the full chain
-- [ ] **PH1-12** Track flags + fields per product: `serialTracked`, `lotTracked`, `expiryRequired`, `warrantyEligible`, `warrantyMonths`, `shelfLifeDays`, `allowBackorder` — _all seven fields landed with PH1-06 (names final); this task adds the rules/behavior (hard blocks, defaults, UI)_
+- [x] **PH1-12** Track flags + fields per product: `serialTracked`, `lotTracked`, `expiryRequired`, `warrantyEligible`, `warrantyMonths`, `shelfLifeDays`, `allowBackorder` — _all seven fields landed with PH1-06 (names final); this task adds the rules/behavior (hard blocks, defaults, UI)_
 - [ ] **PH1-13** Images via Convex storage (upload, reorder, cover image), alt text — _`images[]` field landed with PH1-06 (cover-first); this task adds the upload/reorder flow_
 - [ ] **PH1-14** _(schema-first)_ `serials`, `lots` tables + helpers skeleton: serial state machine (available/reserved/shipped/returned/service/disabled), lot master (supplier, receivedDate, mfgDate, expiryDate, status: released/quarantined/recalled/expired) — with unit tests only
 - [ ] **PH1-15** Product duplicate + archive (archived hidden from all pickers/storefront)
@@ -1093,6 +1093,70 @@ normalization, verbatim guards, reorder-no-op + real-change before/after
 **Next up:** PH1-12 — track-flag rules/behavior (the seven fields
 landed with PH1-06; this task adds hard blocks, defaults, UI).
 
+### 2026-11-05 · Phase 1 (PH1-12)
+
+**Shipped:** track-flag rules/behavior for the seven PH1-06 fields —
+four cross-field hard blocks in one shared module, the editor's
+dependency UI (mutual disable + dependent clears), product audit
+snapshots now carrying all seven flags, and demo data exercising every
+bucket (E2E 37/37).
+
+- **Four rules, one module** (`lib/tracking`): `serial ⊥ lot` (one
+  policy per product — research: "serial OR lot policy per product"),
+  `expiry ⇒ lot` (the batch carries the date; `lots.expiryDate` lands
+  with PH1-14), `warrantyMonths > 0 ⇒ warrantyEligible`,
+  `shelfLifeDays > 0 ⇒ expiryRequired` (the Odoo coupling — shelf
+  life only feeds expiry math at receipt; free-form display specs
+  belong to attribute definitions). First violation wins; `0` counts as
+  unset (same as the readers' `=== true` / present checks); the zod
+  quiet gate mirrors the NUMERIC couplings only — the boolean pairs
+  have no wired error path (a pathless issue would block autosave
+  silently) and the UI makes them unreachable anyway, so the mutation
+  enforces all four verbatim BEFORE any diff or patch (rejected writes
+  never audit). Range checks run first: a typo'd 5000 still reports
+  the range, not the coupling.
+- **Deliberate non-rules**: eligible without months (terms can vary —
+  PH1-17's claim flow may require them at claim time), expiry without
+  shelf life (supplier-stated dates land on the lot), warranty without
+  serial (receipt-based coverage is legitimate), and `allowBackorder`
+  (nothing consumes it until sales exist — PH2).
+- **UI**: serial/lot disable each other (both-on is unreachable, not
+  silently corrected); expiry disables without lot, and unchecking lot
+  clears it; warranty months / shelf life disable without their flag
+  and unchecking clears the value — an orphaned number would be a save
+  the server must reject, so the form never builds one. The "(PH1-12)"
+  placeholder hints became the actual rules.
+- **Audit**: the seven flags join the product snapshot (variants
+  already carried theirs) — flipping serial tracking OFF now shows
+  before/after instead of an unexplained "update".
+- **Variants**: `variants.update` runs the same module over its five
+  boolean flags (the numeric terms don't exist on variant rows);
+  sync-inserted rows copy from a product that already passed, so
+  they're valid by induction.
+- **Demo data**: seed entries spread `UNTRACKED` (the state every new
+  product starts in) with overrides — the three equipment rows get
+  serial + warranty (X5 24 months, S3/M7 12), the rotor kit
+  backorder-allowed — plus a new `DEMO-1008` Ultrasound Gel 5L carrying
+  lot + expiry + 730-day shelf life (the catalog's only perishable, so
+  the bucket has real data). `seed.test` now proves EVERY seeded row
+  satisfies `lib/tracking` (the seed bypasses mutations, so the seed
+  itself is the guarantee): products 7 → 8, join rows unchanged at 7.
+
+**Pipeline**: prettier → tsc → lint → format:check → **221 tests / 30
+files** (+8 `tracking.test`: shared rules incl. first-violation order,
+0/NaN handling, four verbatim create guards + no-audit, both buckets
+round-trip, snapshot before/after on a flag flip + no-op + rejected
+flip, range-before-coupling, variants boolean pairs) → build →
+**HTTP E2E 37/37** (seed buckets over HTTP, three own fixtures with
+cleanup, four guards verbatim, ordering contract, flip audited with
+before/after, identical re-save = no audit entry, warehouse reads/
+can't-edit, SSR auth semantics — owner 200 vs anonymous 307 → /login;
+form HTML still needs a browser, deferred) → dev org healed (seed
+inserted the gel idempotently; 8 DEMO rows verified against the seed).
+
+**Next up:** PH1-13 — product images (upload/reorder/cover via Convex
+storage; the `images[]` field landed with PH1-06).
+
 | Date       | Session         | Shipped (task IDs) | Decisions / notes                                                                                                                              | Next up                            |
 | ---------- | --------------- | ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------- |
 | 2026-10-04 | Plan created    | —                  | Research doc + development plan aligned with scoping decisions                                                                                 | Start Phase 0 (PH0-01…)            |
@@ -1107,3 +1171,4 @@ landed with PH1-06; this task adds hard blocks, defaults, UI).
 | 2026-10-20 | Phase 1 (cont.) | PH1-09             | Variant matrices: cartesian sync w/ preserve-by-coordinate + derived SKUs, SKU namespace shared w/ products, E2E 30 checks                     | PH1-10 (pricing fields)            |
 | 2026-10-20 | Phase 1 (cont.) | PH1-10             | Pricing fields: listPrice/costPrice + read-time margin % (staff-only display, negative shown), product price = variant fallback, E2E 19 checks | PH1-11 (UoM conversions)           |
 | 2026-11-05 | Phase 1 (cont.) | PH1-11             | UoM + per-product conversion chains (1 unit = factor × parent, tree to base), doc-level UoM defaults, order-insensitive no-op diff, E2E 33     | PH1-12 (track-flag rules)          |
+| 2026-11-05 | Phase 1 (cont.) | PH1-12             | Track-flag rules: 4 shared hard blocks (serial ⊥ lot, expiry ⇒ lot, months ⇒ eligible, shelf ⇒ expiry), UI dependency clears, flags in audit   | PH1-13 (product images)            |

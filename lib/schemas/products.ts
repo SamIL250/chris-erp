@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { MAX_PRICE } from "../pricing";
 import { validateSku } from "../sku";
+import { TRACKING_RULES } from "../tracking";
 import { normalizeUoMCode, uomCodeError } from "../uom";
 
 /**
@@ -79,38 +80,68 @@ const uoMField = (label: string) =>
     if (error !== null) ctx.addIssue({ code: "custom", message: error });
   });
 
-export const productSchema = z.object({
-  name: z
-    .string()
-    .trim()
-    .min(1, "Name is required.")
-    .max(100, "Product name must be between 1 and 100 characters."),
-  slug: z.string().max(60, "Slug must be 60 characters or fewer."),
-  sku: z.string().superRefine((raw, ctx) => {
-    const { error } = validateSku(raw);
-    if (error !== null) ctx.addIssue({ code: "custom", message: error });
-  }),
-  barcode: z.string().max(64, "Barcode must be 64 characters or fewer."),
-  brand: z.string().max(100, "Brand must be 100 characters or fewer."),
-  listPrice: priceField("List price"),
-  costPrice: priceField("Cost price"),
-  shortDescription: z.string().max(300, "Short description must be 300 characters or fewer."),
-  longDescription: z.string().max(100_000, "Long description must be 100000 characters or fewer."),
-  status: z.enum(PRODUCT_STATUSES),
-  taxCategory: z.union([z.literal(""), z.enum(TAX_CATEGORIES)]),
-  serialTracked: z.boolean(),
-  lotTracked: z.boolean(),
-  expiryRequired: z.boolean(),
-  warrantyEligible: z.boolean(),
-  allowBackorder: z.boolean(),
-  warrantyMonths: countField(1200, "Warranty months"),
-  shelfLifeDays: countField(36_500, "Shelf life days"),
-  unitOfMeasure: uoMField("Unit of measure"),
-  purchaseUoM: uoMField("Purchase UoM"),
-  salesUoM: uoMField("Sales UoM"),
-  seoTitle: z.string().max(100, "SEO title must be 100 characters or fewer."),
-  seoDescription: z.string().max(300, "SEO description must be 300 characters or fewer."),
-});
+export const productSchema = z
+  .object({
+    name: z
+      .string()
+      .trim()
+      .min(1, "Name is required.")
+      .max(100, "Product name must be between 1 and 100 characters."),
+    slug: z.string().max(60, "Slug must be 60 characters or fewer."),
+    sku: z.string().superRefine((raw, ctx) => {
+      const { error } = validateSku(raw);
+      if (error !== null) ctx.addIssue({ code: "custom", message: error });
+    }),
+    barcode: z.string().max(64, "Barcode must be 64 characters or fewer."),
+    brand: z.string().max(100, "Brand must be 100 characters or fewer."),
+    listPrice: priceField("List price"),
+    costPrice: priceField("Cost price"),
+    shortDescription: z.string().max(300, "Short description must be 300 characters or fewer."),
+    longDescription: z
+      .string()
+      .max(100_000, "Long description must be 100000 characters or fewer."),
+    status: z.enum(PRODUCT_STATUSES),
+    taxCategory: z.union([z.literal(""), z.enum(TAX_CATEGORIES)]),
+    serialTracked: z.boolean(),
+    lotTracked: z.boolean(),
+    expiryRequired: z.boolean(),
+    warrantyEligible: z.boolean(),
+    allowBackorder: z.boolean(),
+    warrantyMonths: countField(1200, "Warranty months"),
+    shelfLifeDays: countField(36_500, "Shelf life days"),
+    unitOfMeasure: uoMField("Unit of measure"),
+    purchaseUoM: uoMField("Purchase UoM"),
+    salesUoM: uoMField("Sales UoM"),
+    seoTitle: z.string().max(100, "SEO title must be 100 characters or fewer."),
+    seoDescription: z.string().max(300, "SEO description must be 300 characters or fewer."),
+  })
+  .superRefine((values, ctx) => {
+    // PH1-12 numeric couplings (lib/tracking rules 3–4), attached to the
+    // field that renders them — both are FormInput-wired, so the message
+    // lands red under its own control. The boolean pairs (serial ⊥ lot,
+    // expiry ⇒ lot) stay server-side on purpose: checkbox state has no
+    // wired error path here, and a pathless issue would block autosave
+    // SILENTLY. The UI makes those pairs unreachable anyway (mutual disable
+    // + dependent clears), and the mutation's verbatim error reaches the
+    // save alert for whatever an API caller forces. 0 = unset, same as the
+    // server's readers (`months > 0` checks).
+    const months = values.warrantyMonths === "" ? undefined : Number(values.warrantyMonths);
+    if (months !== undefined && months > 0 && !values.warrantyEligible) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["warrantyMonths"],
+        message: TRACKING_RULES.warrantyMonthsNeedEligible,
+      });
+    }
+    const shelf = values.shelfLifeDays === "" ? undefined : Number(values.shelfLifeDays);
+    if (shelf !== undefined && shelf > 0 && !values.expiryRequired) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["shelfLifeDays"],
+        message: TRACKING_RULES.shelfLifeNeedsExpiry,
+      });
+    }
+  });
 
 export type ProductFormValues = z.output<typeof productSchema>;
 

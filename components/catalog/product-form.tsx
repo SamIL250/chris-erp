@@ -739,44 +739,54 @@ export function ProductForm({
         {/* -------------------------------------------- Inventory/Tracking */}
         <Section
           title="Inventory & tracking"
-          description="How stock of this item is followed — rules activate with PH1-12."
+          description="How stock of this item is followed — PH1-12 rules: serial ⊥ lot, expiry needs lot."
         >
           <div className="grid gap-4 sm:grid-cols-2">
             <Checkbox
               label="Serial tracked"
-              hint="Each unit carries its own serial (PH1-12)."
+              hint="Unique serial per unit — replaces lot tracking (serials land PH1-14)."
               isSelected={methods.watch("serialTracked")}
+              isDisabled={methods.watch("lotTracked")}
               onChange={(selected) =>
                 methods.setValue("serialTracked", selected, { shouldDirty: true })
               }
             />
             <Checkbox
               label="Lot tracked"
-              hint="Units share a batch/lot number (PH1-12)."
+              hint="Batch/lot numbers across units — required for expiry dates (PH1-14)."
               isSelected={methods.watch("lotTracked")}
+              isDisabled={methods.watch("serialTracked")}
               onChange={(selected) =>
                 methods.setValue("lotTracked", selected, { shouldDirty: true })
               }
             />
             <Checkbox
               label="Expiry required"
-              hint="Receiving must record an expiry date (PH1-12)."
+              hint="Receiving records an expiry date — requires lot tracking (PH1-17)."
               isSelected={methods.watch("expiryRequired")}
-              onChange={(selected) =>
-                methods.setValue("expiryRequired", selected, { shouldDirty: true })
-              }
+              isDisabled={!methods.watch("lotTracked")}
+              onChange={(selected) => {
+                methods.setValue("expiryRequired", selected, { shouldDirty: true });
+                // The shelf-life input only exists alongside expiry — an
+                // unchecked flag can't leave an orphaned number behind
+                // (lib/tracking rule 4 would reject the save).
+                if (!selected) methods.setValue("shelfLifeDays", "", { shouldDirty: true });
+              }}
             />
             <Checkbox
               label="Warranty eligible"
-              hint="Warranties can attach to sales of this item (PH1-17)."
+              hint="Warranties can attach to sales of this item (PH1-17 claim flow)."
               isSelected={methods.watch("warrantyEligible")}
-              onChange={(selected) =>
-                methods.setValue("warrantyEligible", selected, { shouldDirty: true })
-              }
+              onChange={(selected) => {
+                methods.setValue("warrantyEligible", selected, { shouldDirty: true });
+                // Same dependent clear: no term without eligibility
+                // (lib/tracking rule 3 would reject the save).
+                if (!selected) methods.setValue("warrantyMonths", "", { shouldDirty: true });
+              }}
             />
             <Checkbox
               label="Allow backorder"
-              hint="Sales may continue when stock hits zero (PH2)."
+              hint="Sales may continue when stock hits zero — enforced from PH2."
               isSelected={methods.watch("allowBackorder")}
               onChange={(selected) =>
                 methods.setValue("allowBackorder", selected, { shouldDirty: true })
@@ -789,14 +799,16 @@ export function ProductForm({
               label="Warranty (months)"
               type="number"
               placeholder="24"
-              hint="0–1200."
+              hint="0–1200. Needs warranty eligible."
+              isDisabled={!methods.watch("warrantyEligible")}
             />
             <FormInput
               name="shelfLifeDays"
               label="Shelf life (days)"
               type="number"
               placeholder="730"
-              hint="0–36500."
+              hint="0–36500. Needs expiry required."
+              isDisabled={!methods.watch("expiryRequired")}
             />
             <FormInput
               name="unitOfMeasure"

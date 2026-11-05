@@ -2,6 +2,7 @@ import { ConvexError, v } from "convex/values";
 import { MAX_PRICE } from "../../lib/pricing";
 import { sanitizeRichText } from "../../lib/richText";
 import { validateSku } from "../../lib/sku";
+import { trackingError } from "../../lib/tracking";
 import {
   normalizeUoMCode,
   uomCodeError,
@@ -46,6 +47,14 @@ import type { Doc, Id } from "../_generated/dataModel";
  *   module the editor's build gate calls, so error messages are identical
  *   on both sides. Chains must terminate at the base UoM; doc-level UoMs
  *   must be the base or a conversion unit (PH2 lines prefill from them)
+ * - tracking flags (PH1-12): `lib/tracking` cross-field rules run BEFORE
+ *   any diff/patch (serial ⊥ lot, expiry ⇒ lot, months > 0 ⇒ eligible,
+ *   shelf life > 0 ⇒ expiry — range-checks first, so a typo'd 5000 still
+ *   reports the range). The editor's zod gate mirrors the numeric
+ *   couplings; the boolean pairs are UI-unreachable (mutual disable +
+ *   dependent clears) and surface through the save-error alert if an API
+ *   caller forces them. All seven flags join the audit snapshot — turning
+ *   serial tracking OFF is a material event and must show before/after
  * - `attributeValues` (when present) validate against `applicableAttributes`
  *   — the SAME resolver the editor renders from (`lib/attributes.ts` pure
  *   ordering) — one row per value in the definition's typed column
@@ -384,6 +393,26 @@ async function normalizeProductInput(
     longDescription = sanitizeRichText(args.longDescription);
   }
 
+  // Track flags (PH1-12): range-check the numbers FIRST (a typo'd 5000
+  // reports as the range error, like every pre-PH1-12 caller expects),
+  // then the cross-field consistency rules — before any diff or patch, so
+  // an invalid combination is never stored and never audited.
+  const warrantyMonths = normalizeCount(
+    args.warrantyMonths,
+    MAX_WARRANTY_MONTHS,
+    "Warranty months",
+  );
+  const shelfLifeDays = normalizeCount(args.shelfLifeDays, MAX_SHELF_LIFE_DAYS, "Shelf life days");
+  const tracking = trackingError({
+    serialTracked: args.serialTracked,
+    lotTracked: args.lotTracked,
+    expiryRequired: args.expiryRequired,
+    warrantyEligible: args.warrantyEligible,
+    warrantyMonths,
+    shelfLifeDays,
+  });
+  if (tracking !== null) throw new ConvexError(tracking);
+
   // UoM (PH1-11): base first, then the conversion chain against it, then
   // the doc-level defaults (which must be reachable through that chain).
   // Each step throws verbatim — same messages as the editor's build gate.
@@ -422,8 +451,8 @@ async function normalizeProductInput(
     expiryRequired: args.expiryRequired,
     warrantyEligible: args.warrantyEligible,
     allowBackorder: args.allowBackorder,
-    warrantyMonths: normalizeCount(args.warrantyMonths, MAX_WARRANTY_MONTHS, "Warranty months"),
-    shelfLifeDays: normalizeCount(args.shelfLifeDays, MAX_SHELF_LIFE_DAYS, "Shelf life days"),
+    warrantyMonths,
+    shelfLifeDays,
     unitOfMeasure,
     conversions,
     purchaseUoM: purchase.code ?? undefined,
@@ -451,6 +480,16 @@ function auditSnapshot(
     listPrice: source.listPrice,
     costPrice: source.costPrice,
     taxCategory: source.taxCategory,
+    // Tracking flags join the snapshot (PH1-12): flipping a flag — or a
+    // term — is a material operational change; readers use `=== true`, so
+    // absent legacy rows snapshot as `false` (same normalization).
+    serialTracked: source.serialTracked ?? false,
+    lotTracked: source.lotTracked ?? false,
+    expiryRequired: source.expiryRequired ?? false,
+    warrantyEligible: source.warrantyEligible ?? false,
+    warrantyMonths: source.warrantyMonths,
+    shelfLifeDays: source.shelfLifeDays,
+    allowBackorder: source.allowBackorder ?? false,
     categoryIds: source.categoryIds,
     attributeSetIds: source.attributeSetIds ?? [],
     unitOfMeasure: source.unitOfMeasure,

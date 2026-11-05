@@ -206,13 +206,30 @@ export const seed = auditedMutation({
 
     // DEMO-… SKUs: 2 ultrasound (counted), monitor + archived legacy
     // (archived excluded from stats), centrifuges incl. a dual-category
-    // kit, one uncategorized — exercises every bucket the page renders.
+    // kit, two uncategorized — exercises every bucket the page renders.
     // Prices (PH1-10) make the demo data show real margins in the editor;
     // the Lab Bench Stand carries PH1-11 pack conversions + doc-level UoM
     // (bought by the case, sold by the box) so the conversion UI and facts
     // have real data on a fresh org.
+    //
+    // Track flags (PH1-12): UNTRACKED is the default state every new
+    // product starts in; the equipment rows override to the serial +
+    // warranty bucket, the gel to lot + expiry + shelf life, the rotor kit
+    // to backorder-allowed — so every flag combination the editor renders
+    // has real data (and the seed's own rows pass `lib/tracking`).
+    const UNTRACKED = {
+      serialTracked: false,
+      lotTracked: false,
+      expiryRequired: false,
+      warrantyEligible: false,
+      allowBackorder: false,
+    } as const;
     const demoProducts = [
       {
+        ...UNTRACKED,
+        serialTracked: true,
+        warrantyEligible: true,
+        warrantyMonths: 24,
         name: "Portable Ultrasound X5",
         slug: "demo-portable-ultrasound-x5",
         sku: "DEMO-1001",
@@ -223,6 +240,10 @@ export const seed = auditedMutation({
         unitOfMeasure: "each",
       },
       {
+        ...UNTRACKED,
+        serialTracked: true,
+        warrantyEligible: true,
+        warrantyMonths: 12,
         name: "Cart Ultrasound S3",
         slug: "demo-cart-ultrasound-s3",
         sku: "DEMO-1002",
@@ -233,6 +254,10 @@ export const seed = auditedMutation({
         unitOfMeasure: "each",
       },
       {
+        ...UNTRACKED,
+        serialTracked: true,
+        warrantyEligible: true,
+        warrantyMonths: 12,
         name: "Patient Monitor M7",
         slug: "demo-patient-monitor-m7",
         sku: "DEMO-1003",
@@ -243,6 +268,7 @@ export const seed = auditedMutation({
         unitOfMeasure: "each",
       },
       {
+        ...UNTRACKED,
         name: "Bench Centrifuge C2",
         slug: "demo-bench-centrifuge-c2",
         sku: "DEMO-1004",
@@ -253,6 +279,9 @@ export const seed = auditedMutation({
         unitOfMeasure: "each",
       },
       {
+        ...UNTRACKED,
+        // Consumables sell past zero more often than machines do.
+        allowBackorder: true,
         name: "Centrifuge Rotor Kit",
         slug: "demo-centrifuge-rotor-kit",
         sku: "DEMO-1005",
@@ -263,6 +292,7 @@ export const seed = auditedMutation({
         unitOfMeasure: "each",
       },
       {
+        ...UNTRACKED,
         name: "Lab Bench Stand",
         slug: "demo-lab-bench-stand",
         sku: "DEMO-1006",
@@ -280,6 +310,7 @@ export const seed = auditedMutation({
         salesUoM: "box",
       },
       {
+        ...UNTRACKED,
         name: "Legacy Patient Monitor",
         slug: "demo-legacy-patient-monitor",
         sku: "DEMO-1007",
@@ -288,6 +319,23 @@ export const seed = auditedMutation({
         // Sold below cost on clearance — exercises the negative-margin display.
         listPrice: 600,
         costPrice: 780,
+        unitOfMeasure: "each",
+      },
+      {
+        ...UNTRACKED,
+        // The one perishable in the catalog: batches carry the expiry
+        // (supplier-stated date lands on the lot in PH1-17; the shelf life
+        // is what a receipt falls back to).
+        lotTracked: true,
+        expiryRequired: true,
+        shelfLifeDays: 730,
+        name: "Ultrasound Gel 5L",
+        slug: "demo-ultrasound-gel-5l",
+        sku: "DEMO-1008",
+        status: "active",
+        cats: [],
+        listPrice: 12,
+        costPrice: 6,
         unitOfMeasure: "each",
       },
     ] as const;
@@ -305,6 +353,17 @@ export const seed = auditedMutation({
         listPrice: product.listPrice,
         costPrice: product.costPrice,
         unitOfMeasure: product.unitOfMeasure,
+        // The five boolean flags ride UNTRACKED into every entry, so the
+        // const-asserted union exposes them uniformly; the two numeric
+        // terms exist on some entries only — `in` narrows (like the UoM
+        // conversions above).
+        serialTracked: product.serialTracked,
+        lotTracked: product.lotTracked,
+        expiryRequired: product.expiryRequired,
+        warrantyEligible: product.warrantyEligible,
+        allowBackorder: product.allowBackorder,
+        warrantyMonths: "warrantyMonths" in product ? product.warrantyMonths : undefined,
+        shelfLifeDays: "shelfLifeDays" in product ? product.shelfLifeDays : undefined,
         // Only the Lab Bench Stand entry carries these — `in` narrows the
         // const-asserted union (spread: readonly tuples aren't Arrays).
         conversions: "conversions" in product ? [...product.conversions] : undefined,

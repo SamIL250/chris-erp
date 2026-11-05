@@ -1,6 +1,7 @@
 import { ConvexError, v } from "convex/values";
 import { MAX_PRICE } from "../../lib/pricing";
 import { SKU_MAX_LENGTH, validateSku } from "../../lib/sku";
+import { trackingError } from "../../lib/tracking";
 import { auditedMutation } from "../_lib/audit";
 import { requirePermission } from "../_lib/permissions";
 import { applicableAttributes } from "./attributes";
@@ -359,6 +360,18 @@ export const update = auditedMutation({
       throw new ConvexError(`Variant price must be ${MAX_PRICE} or fewer.`);
     }
     const listPrice = args.listPrice === null ? undefined : args.listPrice;
+
+    // Track-flag rules (PH1-12): the SAME shared module as products — the
+    // five boolean flags only (variants carry no numeric terms; months/
+    // shelf-life stay product-level). Before the diff, so a violated
+    // combination is never stored and never audited.
+    const tracking = trackingError({
+      serialTracked: args.serialTracked,
+      lotTracked: args.lotTracked,
+      expiryRequired: args.expiryRequired,
+      warrantyEligible: args.warrantyEligible,
+    });
+    if (tracking !== null) throw new ConvexError(tracking);
 
     const before = {
       sku: row.sku,

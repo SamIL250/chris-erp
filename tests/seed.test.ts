@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 import { api } from "../convex/_generated/api";
 import type { Id } from "../convex/_generated/dataModel";
 import { SYSTEM_ROLES } from "../lib/permissions";
+import { trackingError } from "../lib/tracking";
 import { setup } from "./setup";
 
 /**
@@ -108,7 +109,7 @@ describe("seed (PH0-34)", () => {
       sequences: 11,
       users: SYSTEM_ROLES.length,
       categories: 5,
-      products: 7,
+      products: 8, // 7 equipment rows + Ultrasound Gel (PH1-12's lot bucket)
       productCategories: 7, // PH1-05 join rows mirroring demo categoryIds
       attributeDefinitions: 3,
       attributeSets: 1,
@@ -125,6 +126,38 @@ describe("seed (PH0-34)", () => {
     expect(orgs).toHaveLength(1);
     expect(orgs[0]).toMatchObject({ name: "Chris Trading Ltd", baseCurrency: "USD" });
     expect(await t.run((ctx) => ctx.db.query("sequences").collect())).toHaveLength(11);
+
+    // PH1-12: the seed inserts directly (no mutation validation), so it
+    // itself is what guarantees demo data ships valid — every row must
+    // satisfy `lib/tracking`, and the flag buckets must actually exist:
+    // serial + warranty (equipment), lot + expiry + shelf life (gel),
+    // backorder-allowed (rotor kit).
+    const products = await t.run((ctx) => ctx.db.query("products").collect());
+    for (const row of products) {
+      expect(
+        trackingError({
+          serialTracked: row.serialTracked ?? false,
+          lotTracked: row.lotTracked ?? false,
+          expiryRequired: row.expiryRequired ?? false,
+          warrantyEligible: row.warrantyEligible ?? false,
+          warrantyMonths: row.warrantyMonths,
+          shelfLifeDays: row.shelfLifeDays,
+        }),
+      ).toBeNull();
+    }
+    expect(products.find((row) => row.sku === "DEMO-1001")).toMatchObject({
+      serialTracked: true,
+      warrantyEligible: true,
+      warrantyMonths: 24,
+    });
+    expect(products.find((row) => row.sku === "DEMO-1008")).toMatchObject({
+      lotTracked: true,
+      expiryRequired: true,
+      shelfLifeDays: 730,
+    });
+    expect(products.find((row) => row.sku === "DEMO-1005")).toMatchObject({
+      allowBackorder: true,
+    });
 
     // One invited user per role, each holding exactly that role.
     for (const role of SYSTEM_ROLES) {
@@ -209,7 +242,7 @@ describe("seed (PH0-34)", () => {
       users: 2, // admin + sales; owner is disabled, warehouse exists
       roleGrants: 1, // accountant only
       categories: 5, // demo tree — nothing pre-existed
-      products: 7,
+      products: 8,
       productCategories: 7, // PH1-05 join rows (uncategorized adds none)
       attributeDefinitions: 3, // demo attributes + set
       attributeSets: 1,

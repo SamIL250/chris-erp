@@ -316,8 +316,7 @@ export default defineSchema({
    * it keep reading — writers always set them (PH1-07's editor); readers
    * treat absent as `false` / `[]` / unset (e.g. `serialTracked === true`).
    *
-   * Field → later task: track flags + warranty/shelf-life → PH1-12
-   * (behavior/rules; field names already final), images[] → PH1-13
+   * Field → later task: images[] → PH1-13
    * (storage/reorder/alt live in the media flow), attributeSetIds[] →
    * product-level sets beyond the category-inherited ones (PH1-07 merges
    * them with `attributes.forCategory`), longDescription → rich HTML,
@@ -368,7 +367,9 @@ export default defineSchema({
     taxCategory: v.optional(
       v.union(v.literal("standard"), v.literal("reduced"), v.literal("zero"), v.literal("exempt")),
     ),
-    // Tracking flags + quantities (PH1-12 activates the rules; names final now).
+    // Tracking flags + quantities (PH1-12 shipped the rules —
+    // `lib/tracking`, cross-field: serial ⊥ lot, expiry ⇒ lot,
+    // months > 0 ⇒ eligible, shelf life > 0 ⇒ expiry).
     serialTracked: v.optional(v.boolean()),
     lotTracked: v.optional(v.boolean()),
     expiryRequired: v.optional(v.boolean()),
@@ -481,7 +482,8 @@ export default defineSchema({
     barcode: v.optional(v.string()),
     listPrice: v.optional(v.number()),
     // Tracking flags — copied from the product at generation (PH1-09);
-    // per-variant from there on (PH1-12 activates the rules).
+    // per-variant from there on. PH1-12: `variants.update` enforces the
+    // shared lib/tracking pairs (serial ⊥ lot, expiry ⇒ lot) at write.
     serialTracked: v.optional(v.boolean()),
     lotTracked: v.optional(v.boolean()),
     expiryRequired: v.optional(v.boolean()),
