@@ -100,6 +100,11 @@ _When adding a module: add a row here first, then the permission constant, then 
   can view the catalog sees `listPrice`/`costPrice`/margin in the admin —
   cost and margin are STAFF-SIDE ONLY: storefront queries (PH4) must
   project `listPrice` alone, never cost or derived margin.
+  UoM data (PH1-11): `unitOfMeasure`/`conversions`/`purchaseUoM`/
+  `salesUoM` are product fields — they ride `products.create`/
+  `products.update` (no new gate, no new mutation) and are visible to
+  every catalog viewer in the editor/facts panel; PH2 document lines
+  prefill their UoM from the doc-level defaults.
   Self-service by design,
   no RBAC: `users.updateProfile`, `users.setAvatar`, `files.*`
   (uploader-or-settings.edit on remove), `notifications.*` (own rows).

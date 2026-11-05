@@ -37,6 +37,7 @@ import {
   productSchema,
   type ProductFormValues,
 } from "@/lib/schemas/products";
+import { normalizeUoMCode, uomCodeError, validateConversions, validateDocUoM } from "@/lib/uom";
 import { cx } from "@/utils/cx";
 
 /**
@@ -45,9 +46,10 @@ import { cx } from "@/utils/cx";
  *
  * Data flow:
  * - zod-backed fields live in `useZodForm(productSchema)`; checkbox groups
- *   (categories, sets) and the DYNAMIC attribute values are sibling state —
- *   merged into one payload by `buildProductArgs`, exactly like the PH1-04
- *   set panel keeps its id lists outside the schema;
+ *   (categories, sets), the DYNAMIC attribute values, and UoM CONVERSION
+ *   rows are sibling state — merged into one payload by
+ *   `buildProductArgs`, exactly like the PH1-04 set panel keeps its id
+ *   lists outside the schema;
  * - applicable attributes come from `orderApplicableAttributes` — the same
  *   pure ordering the mutation validates against (`lib/attributes.ts`), so
  *   the form can render inputs for a product that doesn't exist yet;
@@ -75,6 +77,9 @@ type ValueEntry = {
   attributeId: Id<"attributeDefinitions">;
   value: string | number | boolean;
 };
+
+/** A conversion row as edited — factor stays a string until build parse. */
+type ConversionRow = { unit: string; parent: string; factor: string };
 
 /** Stored value rows → initial editor state (multi-select collects rows). */
 function seedValues(
@@ -158,6 +163,19 @@ export function ProductForm({
   const [images] = useState<Id<"files">[]>(() => [...(product?.images ?? [])]);
   const [valuesMap, setValuesMap] = useState<ValueMap>(() => seedValues(storedValues, definitions));
 
+  // Pack conversions (PH1-11) are string-row state (factor parsed at build
+  // like every other form input), outside zod — the chain/membership rules
+  // need base + rows together and run in `buildProductArgs` via `lib/uom`,
+  // so an invalid row surfaces through the same save-error alert as a bad
+  // dynamic attribute value.
+  const [conversions, setConversions] = useState<ConversionRow[]>(() =>
+    (product?.conversions ?? []).map((row) => ({
+      unit: row.unit,
+      parent: row.parent,
+      factor: String(row.factor),
+    })),
+  );
+
   const [serverError, setServerError] = useState<string | null>(null);
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -228,6 +246,29 @@ export function ProductForm({
       }
     }
 
+    // UoM (PH1-11): normalize the base, validate the chain against it, then
+    // the doc-level defaults — SAME lib/uom calls the mutation makes, so a
+    // blocked save shows the exact message the server would have thrown.
+    const base = values.unitOfMeasure.trim() === "" ? "" : normalizeUoMCode(values.unitOfMeasure);
+    const conversionsResult = validateConversions(
+      base,
+      conversions.map((row) => ({
+        unit: row.unit,
+        parent: row.parent,
+        factor: row.factor.trim() === "" ? Number.NaN : Number(row.factor),
+      })),
+    );
+    if (conversionsResult.error !== null) return { invalid: conversionsResult.error };
+    const purchase = validateDocUoM(
+      "Purchase UoM",
+      values.purchaseUoM,
+      base,
+      conversionsResult.rows,
+    );
+    if (purchase.error !== null) return { invalid: purchase.error };
+    const sales = validateDocUoM("Sales UoM", values.salesUoM, base, conversionsResult.rows);
+    if (sales.error !== null) return { invalid: sales.error };
+
     return {
       args: {
         name: values.name,
@@ -249,7 +290,10 @@ export function ProductForm({
         allowBackorder: values.allowBackorder,
         warrantyMonths: values.warrantyMonths === "" ? undefined : Number(values.warrantyMonths),
         shelfLifeDays: values.shelfLifeDays === "" ? undefined : Number(values.shelfLifeDays),
-        unitOfMeasure: values.unitOfMeasure.trim() === "" ? undefined : values.unitOfMeasure,
+        unitOfMeasure: base === "" ? undefined : base,
+        conversions: conversionsResult.rows,
+        purchaseUoM: purchase.code ?? undefined,
+        salesUoM: sales.code ?? undefined,
         images,
         categoryIds: categoryIds as Id<"categories">[],
         attributeSetIds: attributeSetIds as Id<"attributeSets">[],
@@ -328,6 +372,52 @@ export function ProductForm({
     });
     markDirty();
   };
+
+  /* --------------------------------------------------------- conversions */
+
+  /** Watched base UoM code ("" = unset) — rows and selects derive from it. */
+  const baseCode = normalizeUoMCode(methods.watch("unitOfMeasure"));
+
+  const setConversion = (index: number, field: keyof ConversionRow, value: string) => {
+    setConversions((current) =>
+      current.map((row, i) => (i === index ? { ...row, [field]: value } : row)),
+    );
+    markDirty();
+  };
+
+  // New rows default their parent to the base (the common `box → each`
+  // shape) — blocked until a base exists, since chains must resolve to it.
+  const addConversion = () => {
+    setConversions((current) => [...current, { unit: "", parent: baseCode, factor: "" }]);
+    markDirty();
+  };
+
+  const removeConversion = (index: number) => {
+    setConversions((current) => current.filter((_, i) => i !== index));
+    markDirty();
+  };
+
+  /**
+   * Parent choices for row i: the base + every OTHER row's unit — never
+   * self, never an invalid code. Offering only reachable parents means a
+   * fresh row can't construct a dangling chain in the first place.
+   */
+  const parentOptions = (index: number): string[] => {
+    const self = normalizeUoMCode(conversions[index].unit);
+    const others = conversions
+      .filter((_, i) => i !== index)
+      .map((row) => normalizeUoMCode(row.unit));
+    return [...new Set([baseCode, ...others])].filter(
+      (option) => option !== "" && option !== self && uomCodeError(option, "UoM") === null,
+    );
+  };
+
+  /** Doc-level UoM choices: exactly what's convertible — base + units. */
+  const docUoMItems = [
+    ...new Set([baseCode, ...conversions.map((row) => normalizeUoMCode(row.unit))]),
+  ]
+    .filter((option) => option !== "" && uomCodeError(option, "UoM") === null)
+    .map((option) => ({ id: option, label: option }));
 
   const handleDelete = async () => {
     if (targetId === null) return;
@@ -712,7 +802,83 @@ export function ProductForm({
               name="unitOfMeasure"
               label="Unit of measure"
               placeholder="each"
-              hint="Base UoM — conversions land PH1-11."
+              hint="Base unit — pack conversions and document lines convert through it."
+            />
+          </div>
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-medium">Pack conversions</p>
+                <p className="text-secondary text-sm">
+                  1 box = 12 each — chains resolve to the base unit; purchase/sales lines convert
+                  through them (PH2).
+                </p>
+              </div>
+              <Button
+                color="secondary"
+                size="sm"
+                isDisabled={baseCode === ""}
+                onPress={addConversion}
+              >
+                Add conversion
+              </Button>
+            </div>
+            {baseCode === "" && (
+              <p className="text-tertiary text-sm">
+                Set the base unit of measure first — every chain resolves to it.
+              </p>
+            )}
+            {conversions.map((row, index) => (
+              <div key={index} className="grid items-end gap-3 sm:grid-cols-[1fr_1fr_1fr_auto]">
+                <Input
+                  label="Unit"
+                  placeholder="box"
+                  value={row.unit}
+                  onChange={(value) => setConversion(index, "unit", value)}
+                />
+                <Input
+                  label="Factor"
+                  type="number"
+                  placeholder="12"
+                  value={row.factor}
+                  onChange={(value) => setConversion(index, "factor", value)}
+                />
+                <Select
+                  aria-label={`Converts to (conversion ${index + 1})`}
+                  label="Converts to"
+                  placeholder="Choose…"
+                  items={parentOptions(index).map((option) => ({ id: option, label: option }))}
+                  value={normalizeUoMCode(row.parent)}
+                  onChange={(key) => {
+                    if (key !== null) setConversion(index, "parent", String(key));
+                  }}
+                >
+                  {(item) => (
+                    <Select.Item id={item.id} key={item.id}>
+                      {item.label}
+                    </Select.Item>
+                  )}
+                </Select>
+                <Button color="tertiary" size="sm" onPress={() => removeConversion(index)}>
+                  Remove
+                </Button>
+              </div>
+            ))}
+          </div>
+          <div className="grid gap-5 sm:grid-cols-2">
+            <FormSelect
+              name="purchaseUoM"
+              label="Purchase UoM"
+              items={docUoMItems}
+              placeholder={baseCode === "" ? "Base unit" : baseCode}
+              hint="Default unit on purchase lines (PH2) — base or conversion unit."
+            />
+            <FormSelect
+              name="salesUoM"
+              label="Sales UoM"
+              items={docUoMItems}
+              placeholder={baseCode === "" ? "Base unit" : baseCode}
+              hint="Default unit on sales lines (PH2) — base or conversion unit."
             />
           </div>
         </Section>
@@ -907,6 +1073,18 @@ export function ProductFacts({
       ? [{ label: "Shelf life", value: `${product.shelfLifeDays} days` }]
       : []),
     ...(product.unitOfMeasure ? [{ label: "Unit of measure", value: product.unitOfMeasure }] : []),
+    ...(product.conversions && product.conversions.length > 0
+      ? [
+          {
+            label: "Conversions",
+            value: product.conversions
+              .map((row) => `1 ${row.unit} = ${row.factor} ${row.parent}`)
+              .join(" · "),
+          },
+        ]
+      : []),
+    ...(product.purchaseUoM ? [{ label: "Purchase UoM", value: product.purchaseUoM }] : []),
+    ...(product.salesUoM ? [{ label: "Sales UoM", value: product.salesUoM }] : []),
     ...(product.seoTitle ? [{ label: "SEO title", value: product.seoTitle }] : []),
     ...(product.seoDescription
       ? [{ label: "SEO description", value: product.seoDescription }]

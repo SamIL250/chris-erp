@@ -2,6 +2,13 @@ import { ConvexError, v } from "convex/values";
 import { MAX_PRICE } from "../../lib/pricing";
 import { sanitizeRichText } from "../../lib/richText";
 import { validateSku } from "../../lib/sku";
+import {
+  normalizeUoMCode,
+  uomCodeError,
+  validateConversions,
+  validateDocUoM,
+  type Conversion,
+} from "../../lib/uom";
 import { appendAudit, auditedMutation } from "../_lib/audit";
 import { requirePermission } from "../_lib/permissions";
 import { resolveUniqueSlug } from "../_lib/slugs";
@@ -33,6 +40,12 @@ import type { Doc, Id } from "../_generated/dataModel";
  *   (`lib/pricing` — typo guard); cost is DISPLAY-ONLY (the moving-average
  *   cost arrives with inventory/finance), margin % derives at read time and
  *   is staff-side — the storefront projects listPrice alone
+ * - UoM (PH1-11): `unitOfMeasure`/`purchaseUoM`/`salesUoM` normalize as
+ *   codes (trim+lowercase, 1–16) and `conversions` (pack-size edges
+ *   `1 unit = factor × parent`) validate through `lib/uom` — the SAME
+ *   module the editor's build gate calls, so error messages are identical
+ *   on both sides. Chains must terminate at the base UoM; doc-level UoMs
+ *   must be the base or a conversion unit (PH2 lines prefill from them)
  * - `attributeValues` (when present) validate against `applicableAttributes`
  *   — the SAME resolver the editor renders from (`lib/attributes.ts` pure
  *   ordering) — one row per value in the definition's typed column
@@ -63,7 +76,6 @@ const MAX_SHORT_DESCRIPTION = 300;
 const MAX_LONG_DESCRIPTION = 100_000;
 const MAX_SEO_TITLE = 100;
 const MAX_SEO_DESCRIPTION = 300;
-const MAX_UNIT_OF_MEASURE = 50;
 const MAX_WARRANTY_MONTHS = 1200; // 100 years — a typo guard, not a policy
 const MAX_SHELF_LIFE_DAYS = 36_500; // 100 years
 const MAX_VALUE_TEXT = 1000;
@@ -105,6 +117,9 @@ type ProductArgs = {
   warrantyMonths?: number;
   shelfLifeDays?: number;
   unitOfMeasure?: string;
+  conversions?: Conversion[];
+  purchaseUoM?: string;
+  salesUoM?: string;
   images: Id<"files">[];
   categoryIds: Id<"categories">[];
   attributeSetIds: Id<"attributeSets">[];
@@ -142,6 +157,20 @@ function normalizeCount(value: number | undefined, max: number, label: string): 
     throw new ConvexError(`${label} must be a whole number between 0 and ${max}.`);
   }
   return value;
+}
+
+/**
+ * Optional UoM code (PH1-11): blank = unset, otherwise normalized
+ * (trim+lowercase) then format-checked by `lib/uom` — verbatim errors, the
+ * same messages the editor shows (shared module).
+ */
+function normalizeOptionalUoM(value: string | undefined, label: string): string | undefined {
+  if (value === undefined) return undefined;
+  if (value.trim().length === 0) return undefined;
+  const code = normalizeUoMCode(value);
+  const error = uomCodeError(code, label);
+  if (error !== null) throw new ConvexError(error);
+  return code;
 }
 
 /**
@@ -355,6 +384,23 @@ async function normalizeProductInput(
     longDescription = sanitizeRichText(args.longDescription);
   }
 
+  // UoM (PH1-11): base first, then the conversion chain against it, then
+  // the doc-level defaults (which must be reachable through that chain).
+  // Each step throws verbatim — same messages as the editor's build gate.
+  const unitOfMeasure = normalizeOptionalUoM(args.unitOfMeasure, "Unit of measure");
+  const conversionsResult = validateConversions(unitOfMeasure ?? "", args.conversions ?? []);
+  if (conversionsResult.error !== null) throw new ConvexError(conversionsResult.error);
+  const conversions = conversionsResult.rows;
+  const purchase = validateDocUoM(
+    "Purchase UoM",
+    args.purchaseUoM,
+    unitOfMeasure ?? "",
+    conversions,
+  );
+  if (purchase.error !== null) throw new ConvexError(purchase.error);
+  const sales = validateDocUoM("Sales UoM", args.salesUoM, unitOfMeasure ?? "", conversions);
+  if (sales.error !== null) throw new ConvexError(sales.error);
+
   return {
     name,
     slug,
@@ -378,7 +424,10 @@ async function normalizeProductInput(
     allowBackorder: args.allowBackorder,
     warrantyMonths: normalizeCount(args.warrantyMonths, MAX_WARRANTY_MONTHS, "Warranty months"),
     shelfLifeDays: normalizeCount(args.shelfLifeDays, MAX_SHELF_LIFE_DAYS, "Shelf life days"),
-    unitOfMeasure: normalizeOptional(args.unitOfMeasure, MAX_UNIT_OF_MEASURE, "Unit of measure"),
+    unitOfMeasure,
+    conversions,
+    purchaseUoM: purchase.code ?? undefined,
+    salesUoM: sales.code ?? undefined,
     images: await requireImages(ctx, args.images),
     categoryIds: await requireCategories(ctx, args.categoryIds),
     attributeSetIds: await requireSets(ctx, args.attributeSetIds),
@@ -404,6 +453,10 @@ function auditSnapshot(
     taxCategory: source.taxCategory,
     categoryIds: source.categoryIds,
     attributeSetIds: source.attributeSetIds ?? [],
+    unitOfMeasure: source.unitOfMeasure,
+    conversions: source.conversions ?? [],
+    purchaseUoM: source.purchaseUoM,
+    salesUoM: source.salesUoM,
     valueCount,
   };
 }
@@ -436,6 +489,11 @@ const PRODUCT_ARGS = {
   warrantyMonths: v.optional(v.number()),
   shelfLifeDays: v.optional(v.number()),
   unitOfMeasure: v.optional(v.string()),
+  conversions: v.optional(
+    v.array(v.object({ unit: v.string(), parent: v.string(), factor: v.number() })),
+  ),
+  purchaseUoM: v.optional(v.string()),
+  salesUoM: v.optional(v.string()),
   images: v.array(v.id("files")),
   categoryIds: v.array(v.id("categories")),
   attributeSetIds: v.array(v.id("attributeSets")),
@@ -516,6 +574,9 @@ export const create = auditedMutation({
       shelfLifeDays: product.shelfLifeDays,
       allowBackorder: product.allowBackorder,
       unitOfMeasure: product.unitOfMeasure,
+      conversions: product.conversions,
+      purchaseUoM: product.purchaseUoM,
+      salesUoM: product.salesUoM,
       images: product.images,
       categoryIds: product.categoryIds,
       attributeSetIds: product.attributeSetIds,
@@ -558,6 +619,12 @@ export const update = auditedMutation({
 
     const sameList = <T>(a: T[], b: T[]) =>
       a.length === b.length && a.every((item, index) => item === b[index]);
+    // Conversions diff as an ORDER-INSENSITIVE key set: rows arrive
+    // normalized (codes lowercase, one row per unit), so re-saving with the
+    // rows in a different order is still a no-op — cosmetic shuffles never
+    // produce an audit entry (PH0-30 autosave pattern).
+    const conversionKeys = (rows: Conversion[]) =>
+      rows.map((row) => `${row.unit}=${row.factor}x${row.parent}`).sort();
     const changed =
       product.name !== row.name ||
       product.slug !== row.slug ||
@@ -578,6 +645,9 @@ export const update = auditedMutation({
       product.warrantyMonths !== row.warrantyMonths ||
       product.shelfLifeDays !== row.shelfLifeDays ||
       product.unitOfMeasure !== row.unitOfMeasure ||
+      product.purchaseUoM !== row.purchaseUoM ||
+      product.salesUoM !== row.salesUoM ||
+      !sameList(conversionKeys(product.conversions ?? []), conversionKeys(row.conversions ?? [])) ||
       product.seoTitle !== row.seoTitle ||
       product.seoDescription !== row.seoDescription ||
       !sameList(product.images, row.images ?? []) ||
@@ -631,6 +701,9 @@ export const update = auditedMutation({
       shelfLifeDays: product.shelfLifeDays,
       allowBackorder: product.allowBackorder,
       unitOfMeasure: product.unitOfMeasure,
+      conversions: product.conversions,
+      purchaseUoM: product.purchaseUoM,
+      salesUoM: product.salesUoM,
       images: product.images,
       categoryIds: product.categoryIds,
       attributeSetIds: product.attributeSetIds,

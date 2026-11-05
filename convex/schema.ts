@@ -317,8 +317,7 @@ export default defineSchema({
    * treat absent as `false` / `[]` / unset (e.g. `serialTracked === true`).
    *
    * Field → later task: track flags + warranty/shelf-life → PH1-12
-   * (behavior/rules; field names already final), unitOfMeasure → PH1-11
-   * (base UoM code; conversions + purchase/sales UoM), images[] → PH1-13
+   * (behavior/rules; field names already final), images[] → PH1-13
    * (storage/reorder/alt live in the media flow), attributeSetIds[] →
    * product-level sets beyond the category-inherited ones (PH1-07 merges
    * them with `attributes.forCategory`), longDescription → rich HTML,
@@ -377,8 +376,28 @@ export default defineSchema({
     warrantyMonths: v.optional(v.number()),
     shelfLifeDays: v.optional(v.number()),
     allowBackorder: v.optional(v.boolean()),
-    /** Base UoM code ("each" by convention) — conversions land PH1-11. */
+    /**
+     * Units of measure (PH1-11): `unitOfMeasure` is the BASE code ("each"
+     * by convention) every conversion chain terminates at — all three code
+     * fields normalize (trim+lowercase) and format-check through
+     * `lib/uom`. `conversions` holds per-product pack-size EDGES:
+     * `1 unit = factor × parent` ("1 case = 6 box", "1 box = 12 each").
+     * Pack sizes are per-product by nature, so there is no global UoM
+     * catalog; `lib/uom` enforces no cycles/duplicate units/dangling
+     * parents, factors in (0, 1e9], and at most 12 rows.
+     */
     unitOfMeasure: v.optional(v.string()),
+    conversions: v.optional(
+      v.array(v.object({ unit: v.string(), parent: v.string(), factor: v.number() })),
+    ),
+    /**
+     * Doc-level UoM (PH1-11): defaults prefilling purchase/sales document
+     * lines (PH2); each must be the base or a conversion unit so a line can
+     * always convert to base stock. The line's OWN UoM may differ — PH2
+     * line items carry it and resolve through `conversions`.
+     */
+    purchaseUoM: v.optional(v.string()),
+    salesUoM: v.optional(v.string()),
     /** Cover-first image list (PH1-13: upload, reorder, alt text). */
     images: v.optional(v.array(v.id("files"))),
     categoryIds: v.array(v.id("categories")),

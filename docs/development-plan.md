@@ -2,7 +2,7 @@
 
 > **Companion to:** [`erp-research-and-features.md`](./erp-research-and-features.md) (research, decisions, feature priorities)
 > **Stack:** Next.js (App Router) · Convex · Untitled UI (components + icons) · Stripe · Resend · Tailwind v4
-> **Status:** Phase 1 🔄 in progress — pricing fields shipped (10 / 25, Catalog & Inventory)
+> **Status:** Phase 1 🔄 in progress — units of measure shipped (11 / 25, Catalog & Inventory)
 > **Last updated:** 2026-10-20
 
 ---
@@ -35,7 +35,7 @@
 | Phase          | Focus                                              | Status         | Tasks   | Gate |
 | -------------- | -------------------------------------------------- | -------------- | ------- | ---- |
 | **Phase 0**    | Foundation (scaffold, auth, RBAC, settings, shell) | ✅ Complete    | 35 / 35 | ☑    |
-| **Phase 1**    | Catalog + Inventory core (schema-first)            | 🔨 In progress | 10 / 25 | ☐    |
+| **Phase 1**    | Catalog + Inventory core (schema-first)            | 🔨 In progress | 11 / 25 | ☐    |
 | **Phase 2**    | Sales & Procurement (O2C + P2P documents)          | ⬜ Not started | 0 / 29  | ☐    |
 | **Phase 3**    | Finance (double-entry, postings, reports)          | ⬜ Not started | 0 / 17  | ☐    |
 | **Phase 4**    | Ecommerce storefront (B2C + B2B portal)            | ⬜ Not started | 0 / 24  | ☐    |
@@ -185,7 +185,7 @@ chris-erp/
 - [x] **PH1-08** Product list: reactive table — filter by category/brand/status/flags, search by name/SKU/barcode, bulk status change, column sort — _one bounded full scan serves every combo (substring search over three fields can't ride an index; a Convex search index exposes one searchable field, so name/SKU/barcode would need merging — revisit if catalogs outgrow it), category filter reads `categoryIds` (PH1-05 source of truth), sort ties break on `_id` so pagination never reshuffles, page window clamps 1..200; bulk change is one transaction that resolves every id first and audits per CHANGED row_ — shipped 2026-10-06: `catalog/products:list` + `:brands` + `:bulkStatus` (audited, `catalog.edit`), list page at `/catalog/products` replacing the redirect stub (DataTable: debounced search, category/brand/status/flags filters, column sort, selection-gated bulk bar)
 - [x] **PH1-09** Variants: option axes (from set attributes e.g. color/config) → variant matrix, per-variant SKU/price/barcode/track flags; product-level defaults fill variants — _axes are APPLICABLE Select attributes (same resolver the editor renders), matrix = cartesian product capped at 200 with the count named before any write; sync preserves exact-coordinate combinations with their edits, inserts new from product defaults, deletes orphans in ONE transaction — derived SKUs `<productSku>-TOKEN-TOKEN` (generation-time only; clash fails the whole reconcile naming the SKU), variant SKU unique org-wide ACROSS products+variants (a scan resolves one thing); matrix writes ride catalog.edit (rows are product-document entries); sync audits ONE product-level entry naming every removed row_ — shipped 2026-10-20: `variants` table + `catalog/variants:list|sync|update|remove`, option/type guards in `attributes.*`, variants page at `/catalog/products/[id]/variants` (axis chips, editable matrix, flags dropdown)
 - [x] **PH1-10** Pricing fields: `listPrice`, `costPrice` (display only — true moving average cost computed in inventory/finance), margin % shown to staff roles — _prices optional, finite, 0..MAX_PRICE (999999999.99 typo guard in `lib/pricing`, one cap shared with the variant price); cost is display-only (the moving-average cost arrives with inventory/finance) and margin derives at READ time (`marginPercent`, one decimal, negative margins shown not hidden — selling below cost is real); margin/cost are staff-side only: the storefront (PH4) must project listPrice alone; product `listPrice` is the variant override's display fallback (PH1-09 note, resolvePrice formalizes in PH2-07); prices ride the commercial audit snapshot + full-form no-op diff_ — shipped 2026-10-20: `listPrice`/`costPrice` on `products` (create/update validation, audit snapshot, update diff), `lib/pricing.ts` (MAX_PRICE + marginPercent), Pricing section in the editor filled (two inputs + live margin readout, negative in error color), facts panel rows, variants matrix price cell falls back to the product price, demo seed prices, 10 new tests → 193 total, E2E 19 checks
-- [ ] **PH1-11** Units of measure + conversions (each → box → case) with purchase/sales UoM — _base `unitOfMeasure` field landed with PH1-06; this task adds the conversions + doc-level UoM_
+- [x] **PH1-11** Units of measure + conversions (each → box → case) with purchase/sales UoM — _base `unitOfMeasure` field landed with PH1-06; this task adds the conversions + doc-level UoM_ — shipped 2026-11-05: per-product conversion CHAINS (`1 unit = factor × parent`, every chain terminating at the base — no global catalog: pack sizes are per-product by nature) + `purchaseUoM`/`salesUoM` doc-level defaults (must be the base or a conversion unit, so PH2 lines can always convert to base stock); codes normalize trim+lowercase (1–16, letters/digits + `.`/`-`) — one vocabulary across base/chain/doc fields; `lib/uom.ts` is the single validator+message source shared by the editor's build gate and the mutation (sku pattern); conversion rows diff as an ORDER-INSENSITIVE key set (reorder = no-op, no audit) and land in the audit snapshot; Inventory section gained the row editor (parent choices = base + other units, can't construct dangling chains) + doc-level selects; demo seed gives every product `unitOfMeasure: "each"` and the Lab Bench Stand the full chain
 - [ ] **PH1-12** Track flags + fields per product: `serialTracked`, `lotTracked`, `expiryRequired`, `warrantyEligible`, `warrantyMonths`, `shelfLifeDays`, `allowBackorder` — _all seven fields landed with PH1-06 (names final); this task adds the rules/behavior (hard blocks, defaults, UI)_
 - [ ] **PH1-13** Images via Convex storage (upload, reorder, cover image), alt text — _`images[]` field landed with PH1-06 (cover-first); this task adds the upload/reorder flow_
 - [ ] **PH1-14** _(schema-first)_ `serials`, `lots` tables + helpers skeleton: serial state machine (available/reserved/shipped/returned/service/disabled), lot master (supplier, receivedDate, mfgDate, expiryDate, status: released/quarantined/recalled/expired) — with unit tests only
@@ -1034,6 +1034,65 @@ fallback, SSR editor page).
 
 **Next up:** PH1-11 — units of measure + conversions (each → box → case).
 
+### 2026-11-05 · Phase 1 (PH1-11)
+
+Units of measure + pack-size conversions + doc-level UoM:
+
+- **Per-product conversion CHAINS, no global catalog**: a product's BASE
+  UoM (`unitOfMeasure`, "each" by convention) plus edges
+  `1 unit = factor × parent` — "1 box = 12 each", "1 case = 6 box" —
+  because pack sizes are per-product by nature (a box of gloves ≠ a box
+  of monitors). Every chain must terminate at the base: no cycles, no
+  duplicate units, no dangling parents, no unit converting to itself or
+  to the base; factors finite, > 0, ≤ 1e9 (typo guard), at most 12 rows.
+  `lib/uom.ts` holds every rule AND message, shared by the editor's
+  build gate and the mutation — identical wording on both sides (the
+  `lib/sku` pattern); rejection never writes an audit entry.
+- **Codes normalize once**: trim + lowercase, 1–16 chars, letters/digits
+  with "."/"-" separators — one vocabulary across base, chain units and
+  doc-level UoMs. Unlike SKUs, UoM codes are case-insensitive vocabulary
+  (not user identifiers), so silent normalization can't lose meaning.
+- **Doc-level UoM** (`purchaseUoM`/`salesUoM`): defaults that will
+  prefill PH2 purchase/sales document lines; each must be the base or a
+  conversion unit, so a line can always convert to base stock. The
+  LINE'S OWN UoM may differ — PH2 lines carry theirs and resolve through
+  these edges (`conversionFactors`/`convertQuantity` land now as pure
+  base-relative math for the stock/doc layers to build on).
+- **Full-form semantics**: conversions ride `products.create`/`update`
+  (no new mutation → no new gate; RBAC matrix unchanged); omitted
+  optionals clear (`[]` for conversions); the update diff compares rows
+  as an ORDER-INSENSITIVE key set (rows arrive normalized, one row per
+  unit), so re-saving rows in a different order is still a no-op while a
+  real change lands in the audit snapshot beside the doc-level UoMs.
+- **UI**: the Inventory section gains the conversion row editor —
+  `Unit / Factor / Converts to`, where parent choices are only the base +
+  other rows' units (a fresh row can't construct a dangling chain, and
+  new rows prefill parent = base) — plus Purchase/Sales UoM selects whose
+  choices are exactly what's convertible. Cross-field validation runs in
+  `buildProductArgs` (zod can't see the rows — sibling state like the
+  attribute values), surfacing the shared messages through the
+  save-error alert; ProductFacts renders "1 box = 12 each · 1 case = 6 box".
+- **Demo data**: every seeded product carries `unitOfMeasure: "each"`;
+  the Lab Bench Stand gets the full chain (box = 2 each, case = 5 box) +
+  buy-by-case/sell-by-box. The seed skips existing SKUs, so the dev
+  org's DEMO-* rows were healed through audited `products.update`
+  (slugs passed explicitly — never re-derive them).
+
+**Pipeline**: prettier → tsc → lint → format:check → **213 tests / 29
+files** (+20 `uom.test`: code rules, chain validation incl. cycle/
+dangling/dupe/self/base + factor guards + row cap, factor composition +
+`convertQuantity`, doc-UoM membership, create round-trip with messy-code
+normalization, verbatim guards, reorder-no-op + real-change before/after
+
+- clear-on-omit) → build → **HTTP E2E 33/33** (own fixtures, cleaned up:
+  messy-code round-trip, 7 guards verbatim, reorder = no audit entry,
+  warehouse reads/can't-edit, SSR auth semantics — owner/view 200 vs
+  anonymous 307 → /login; the form's HTML needs a browser, still deferred)
+  → demo-data heal (7 rows through audited updates).
+
+**Next up:** PH1-12 — track-flag rules/behavior (the seven fields
+landed with PH1-06; this task adds hard blocks, defaults, UI).
+
 | Date       | Session         | Shipped (task IDs) | Decisions / notes                                                                                                                              | Next up                            |
 | ---------- | --------------- | ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------- |
 | 2026-10-04 | Plan created    | —                  | Research doc + development plan aligned with scoping decisions                                                                                 | Start Phase 0 (PH0-01…)            |
@@ -1047,3 +1106,4 @@ fallback, SSR editor page).
 | 2026-10-06 | Phase 1 (cont.) | PH1-08             | Product list: bounded-scan list query + brands facet + bulkStatus (per-changed-row audit), E2E 41 checks                                       | PH1-09 (variants)                  |
 | 2026-10-20 | Phase 1 (cont.) | PH1-09             | Variant matrices: cartesian sync w/ preserve-by-coordinate + derived SKUs, SKU namespace shared w/ products, E2E 30 checks                     | PH1-10 (pricing fields)            |
 | 2026-10-20 | Phase 1 (cont.) | PH1-10             | Pricing fields: listPrice/costPrice + read-time margin % (staff-only display, negative shown), product price = variant fallback, E2E 19 checks | PH1-11 (UoM conversions)           |
+| 2026-11-05 | Phase 1 (cont.) | PH1-11             | UoM + per-product conversion chains (1 unit = factor × parent, tree to base), doc-level UoM defaults, order-insensitive no-op diff, E2E 33     | PH1-12 (track-flag rules)          |

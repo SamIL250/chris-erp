@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { MAX_PRICE } from "../pricing";
 import { validateSku } from "../sku";
+import { normalizeUoMCode, uomCodeError } from "../uom";
 
 /**
  * Product editor validation (PH1-07) — the client mirror of the rules in
@@ -12,9 +13,12 @@ import { validateSku } from "../sku";
  * rewrites a typed SKU (only the slugs derive, from the name). Counts and
  * lengths reuse the server's exact wording where it's cheap.
  *
- * `categoryIds` / `attributeSetIds` / attribute VALUES live outside this
- * schema (checkbox + dynamic-field state, same as the PH1-04 set panel) —
- * they're merged into the mutation payload by the form's `buildArgs`.
+ * `categoryIds` / `attributeSetIds` / attribute VALUES / UoM CONVERSIONS
+ * live outside this schema (checkbox + dynamic-field state, same as the
+ * PH1-04 set panel) — they're merged into the mutation payload by the
+ * form's `buildArgs`, which runs the shared `lib/uom` chain/membership
+ * rules there (cross-field checks need the conversion rows, which zod
+ * doesn't hold). The three UoM CODE fields validate their format here.
  */
 
 export const PRODUCT_STATUSES = ["draft", "active", "archived"] as const;
@@ -60,6 +64,21 @@ const priceField = (label: string) =>
       `${label} must be a non-negative amount with up to 2 decimals.`,
     );
 
+/**
+ * UoM code (PH1-11): "" (unset) or a normalized `lib/uom` code — the SAME
+ * normalization + `uomCodeError` wording the mutation throws, so "BOX "
+ * passes here, saves as "box", and the message on a bad value matches the
+ * server's verbatim. Chain/membership rules (conversions, doc-level UoM
+ * reachability) run in `buildProductArgs`, which sees both code fields and
+ * the conversion rows.
+ */
+const uoMField = (label: string) =>
+  z.string().superRefine((value, ctx) => {
+    if (value.trim() === "") return;
+    const error = uomCodeError(normalizeUoMCode(value), label);
+    if (error !== null) ctx.addIssue({ code: "custom", message: error });
+  });
+
 export const productSchema = z.object({
   name: z
     .string()
@@ -86,7 +105,9 @@ export const productSchema = z.object({
   allowBackorder: z.boolean(),
   warrantyMonths: countField(1200, "Warranty months"),
   shelfLifeDays: countField(36_500, "Shelf life days"),
-  unitOfMeasure: z.string().max(50, "Unit of measure must be 50 characters or fewer."),
+  unitOfMeasure: uoMField("Unit of measure"),
+  purchaseUoM: uoMField("Purchase UoM"),
+  salesUoM: uoMField("Sales UoM"),
   seoTitle: z.string().max(100, "SEO title must be 100 characters or fewer."),
   seoDescription: z.string().max(300, "SEO description must be 300 characters or fewer."),
 });
@@ -115,6 +136,8 @@ export function productDefaults(
     warrantyMonths?: number;
     shelfLifeDays?: number;
     unitOfMeasure?: string;
+    purchaseUoM?: string;
+    salesUoM?: string;
     seoTitle?: string;
     seoDescription?: string;
   } | null,
@@ -139,6 +162,8 @@ export function productDefaults(
     warrantyMonths: product?.warrantyMonths !== undefined ? String(product.warrantyMonths) : "",
     shelfLifeDays: product?.shelfLifeDays !== undefined ? String(product.shelfLifeDays) : "",
     unitOfMeasure: product?.unitOfMeasure ?? "",
+    purchaseUoM: product?.purchaseUoM ?? "",
+    salesUoM: product?.salesUoM ?? "",
     seoTitle: product?.seoTitle ?? "",
     seoDescription: product?.seoDescription ?? "",
   };

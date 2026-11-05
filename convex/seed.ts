@@ -207,7 +207,10 @@ export const seed = auditedMutation({
     // DEMO-… SKUs: 2 ultrasound (counted), monitor + archived legacy
     // (archived excluded from stats), centrifuges incl. a dual-category
     // kit, one uncategorized — exercises every bucket the page renders.
-    // Prices (PH1-10) make the demo data show real margins in the editor.
+    // Prices (PH1-10) make the demo data show real margins in the editor;
+    // the Lab Bench Stand carries PH1-11 pack conversions + doc-level UoM
+    // (bought by the case, sold by the box) so the conversion UI and facts
+    // have real data on a fresh org.
     const demoProducts = [
       {
         name: "Portable Ultrasound X5",
@@ -217,6 +220,7 @@ export const seed = auditedMutation({
         cats: ["ultrasound-systems"],
         listPrice: 24_500,
         costPrice: 15_900,
+        unitOfMeasure: "each",
       },
       {
         name: "Cart Ultrasound S3",
@@ -226,6 +230,7 @@ export const seed = auditedMutation({
         cats: ["ultrasound-systems"],
         listPrice: 38_000,
         costPrice: 26_400,
+        unitOfMeasure: "each",
       },
       {
         name: "Patient Monitor M7",
@@ -235,6 +240,7 @@ export const seed = auditedMutation({
         cats: ["patient-monitors"],
         listPrice: 1_850,
         costPrice: 1_120,
+        unitOfMeasure: "each",
       },
       {
         name: "Bench Centrifuge C2",
@@ -244,6 +250,7 @@ export const seed = auditedMutation({
         cats: ["centrifuges"],
         listPrice: 3_200,
         costPrice: 2_050,
+        unitOfMeasure: "each",
       },
       {
         name: "Centrifuge Rotor Kit",
@@ -253,6 +260,7 @@ export const seed = auditedMutation({
         cats: ["centrifuges", "lab-equipment"],
         listPrice: 640,
         costPrice: 385,
+        unitOfMeasure: "each",
       },
       {
         name: "Lab Bench Stand",
@@ -262,6 +270,14 @@ export const seed = auditedMutation({
         cats: [],
         listPrice: 95,
         costPrice: 41,
+        unitOfMeasure: "each",
+        // 1 case = 5 box, 1 box = 2 each → a case holds 10 stands.
+        conversions: [
+          { unit: "box", parent: "each", factor: 2 },
+          { unit: "case", parent: "box", factor: 5 },
+        ],
+        purchaseUoM: "case",
+        salesUoM: "box",
       },
       {
         name: "Legacy Patient Monitor",
@@ -272,6 +288,7 @@ export const seed = auditedMutation({
         // Sold below cost on clearance — exercises the negative-margin display.
         listPrice: 600,
         costPrice: 780,
+        unitOfMeasure: "each",
       },
     ] as const;
     const existingSkus = new Set((await ctx.db.query("products").collect()).map((row) => row.sku));
@@ -287,6 +304,12 @@ export const seed = auditedMutation({
         status: product.status,
         listPrice: product.listPrice,
         costPrice: product.costPrice,
+        unitOfMeasure: product.unitOfMeasure,
+        // Only the Lab Bench Stand entry carries these — `in` narrows the
+        // const-asserted union (spread: readonly tuples aren't Arrays).
+        conversions: "conversions" in product ? [...product.conversions] : undefined,
+        purchaseUoM: "purchaseUoM" in product ? product.purchaseUoM : undefined,
+        salesUoM: "salesUoM" in product ? product.salesUoM : undefined,
         categoryIds,
         createdAt: now,
         updatedAt: now,
