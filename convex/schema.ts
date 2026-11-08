@@ -593,4 +593,278 @@ export default defineSchema({
     .index("by_attribute_number", ["attributeId", "valueNumber"])
     .index("by_attribute_boolean", ["attributeId", "valueBoolean"])
     .index("by_attribute_date", ["attributeId", "valueDate"]),
+
+  /**
+   * Warehouses (PH1-16). Stock locations the ledger (PH1-17) will post
+   * against. `code` is the short unique label staff type (normalized
+   * uppercase). Exactly one row is `isDefault` — receipts and adjustments
+   * that don't name a warehouse land there. An inactive warehouse stays
+   * readable (history will point at it) but cannot be the default.
+   * `address` is one free-text block until customers bring structured
+   * addresses (PH2-01).
+   */
+  warehouses: defineTable({
+    code: v.string(),
+    name: v.string(),
+    address: v.optional(v.string()),
+    isDefault: v.boolean(),
+    active: v.boolean(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_code", ["code"])
+    .index("by_active", ["active"]),
+
+  /**
+   * Unit serials (PH1-14, schema-first — UI and receipt/pick workflows wait
+   * for Phase 5). One row per physical unit of a `serialTracked` product.
+   * `number` is the scanned identity (trim only — manufacturer codes are
+   * case-sensitive); org-wide uniqueness is a future write-time probe on
+   * `by_number`, the same split as SKUs. `status` is the lifecycle in
+   * `lib/serials` (`available → reserved → shipped → returned → service →
+   * disabled`); this row stores the CURRENT state only. Movements name the
+   * serial (PH1-17); changing this status stays a Phase 5 workflow.
+   *
+   * Warranty registration (PH5-13) lives HERE, not in a third table: at
+   * shipment the sale snapshots `warrantyStart` (delivery time) and
+   * `warrantyMonths` (from the product). `warrantyLookup` in `lib/serials`
+   * answers valid / expired / none. No public mutation yet.
+   *
+   * Which warehouse holds the unit is a ledger fact (PH1-17), not a column
+   * here. `customerId` waits for `customers` (PH2-01). On-hand quantity is
+   * never stored on the serial; a unit is one, and the ledger references it.
+   */
+  serials: defineTable({
+    productId: v.id("products"),
+    variantId: v.optional(v.id("variants")),
+    /** Scanned serial. Uniqueness is enforced at write time, not by schema. */
+    number: v.string(),
+    status: v.union(
+      v.literal("available"),
+      v.literal("reserved"),
+      v.literal("shipped"),
+      v.literal("returned"),
+      v.literal("service"),
+      v.literal("disabled"),
+    ),
+    /** Set when the unit ships (PH5-13). Epoch ms. */
+    warrantyStart: v.optional(v.number()),
+    /** Snapshot of the product term at shipment — not a live join. */
+    warrantyMonths: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_number", ["number"])
+    .index("by_product", ["productId"])
+    .index("by_product_status", ["productId", "status"])
+    .index("by_status", ["status"]),
+
+  /**
+   * Lot / batch master (PH1-14, schema-first). One row per supplier batch
+   * of a `lotTracked` product — identity, dates, and disposition. Quantity
+   * is NOT stored here; on-hand per warehouse is the stock ledger (PH1-17),
+   * which will point at `lotId`. FEFO (PH5-06) scans `by_product_expiry`
+   * (a lot with no expiry sits under the index's null key, so a range over
+   * real dates skips it).
+   *
+   * `supplier` is the name captured at receipt. `vendorId` waits for the
+   * vendors table (PH2-03). `status` is the disposition in `lib/lots`;
+   * `effectiveLotStatus` additionally treats a `released` lot whose
+   * `expiryDate` has passed as `expired` without rewriting the row — the
+   * daily expiry job (PH5-08) is what persists that transition. No public
+   * mutation yet.
+   */
+  lots: defineTable({
+    productId: v.id("products"),
+    variantId: v.optional(v.id("variants")),
+    /** Supplier batch code. Unique per product (`by_product_number`). */
+    number: v.string(),
+    /** Free-text supplier until `vendors` exists (PH2-03). */
+    supplier: v.optional(v.string()),
+    /** When we received the batch. Epoch ms. */
+    receivedDate: v.number(),
+    mfgDate: v.optional(v.number()),
+    expiryDate: v.optional(v.number()),
+    status: v.union(
+      v.literal("released"),
+      v.literal("quarantined"),
+      v.literal("recalled"),
+      v.literal("expired"),
+    ),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_product", ["productId"])
+    .index("by_product_number", ["productId", "number"])
+    .index("by_product_expiry", ["productId", "expiryDate"])
+    .index("by_status", ["status"]),
+
+  /**
+   * Append-only stock ledger (PH1-17). One row per movement; nothing in
+   * this module patches or deletes a row — a correction is a new
+   * adjustment. `qty` is signed by type (`lib/stock`): receipts, transfer
+   * ins, and reservations are positive; issues, transfer outs, and
+   * releases are negative; adjustments are either sign except zero.
+   * On-hand is the sum of the physical types; reserved is the sum of
+   * reservation + release. `available = onHand − reserved` is PH1-18.
+   *
+   * `unitCost` is the cost per base unit at this moment (moving average
+   * is a later read, not a column). `referenceType` + `referenceId` name
+   * the document that caused the line; both are absent on a bare post.
+   * A manual adjustment (PH1-20) also carries `reason`, an optional
+   * `note`, and an optional `photoFileId`. Those three stay absent on
+   * every other type.
+   * `serialIds` lists the units this line moved — a serial is one, so
+   * |qty| equals the list length when the list is not empty. No
+   * `updatedAt`: the row is the timestamp.
+   */
+  stockMovements: defineTable({
+    type: v.union(
+      v.literal("receipt"),
+      v.literal("issue"),
+      v.literal("transferIn"),
+      v.literal("transferOut"),
+      v.literal("adjustment"),
+      v.literal("reservation"),
+      v.literal("release"),
+    ),
+    qty: v.number(),
+    productId: v.id("products"),
+    variantId: v.optional(v.id("variants")),
+    warehouseId: v.id("warehouses"),
+    lotId: v.optional(v.id("lots")),
+    serialIds: v.array(v.id("serials")),
+    referenceType: v.optional(v.string()),
+    referenceId: v.optional(v.string()),
+    unitCost: v.optional(v.number()),
+    /** Why a manual adjustment changed the count (PH1-20). Absent on other types. */
+    reason: v.optional(
+      v.union(
+        v.literal("damage"),
+        v.literal("countCorrection"),
+        v.literal("writeOff"),
+        v.literal("found"),
+      ),
+    ),
+    /** Warehouse note beside the reason. Blank is stored as absent. */
+    note: v.optional(v.string()),
+    /** Optional photo of the damage, the count, or the found units. */
+    photoFileId: v.optional(v.id("files")),
+    actorId: v.id("users"),
+    createdAt: v.number(),
+  })
+    .index("by_product", ["productId", "createdAt"])
+    .index("by_product_warehouse", ["productId", "warehouseId", "createdAt"])
+    .index("by_warehouse", ["warehouseId", "createdAt"])
+    .index("by_lot", ["lotId"])
+    .index("by_reference", ["referenceType", "referenceId"]),
+
+  /**
+   * Warehouse transfer (PH1-21). Draft holds no stock. Shipping posts a
+   * transfer out at the source and the document becomes in-transit.
+   * Each receipt posts a transfer in at the destination for the quantity
+   * that arrived. The document stays in transit until every line is
+   * fully received. Cancel is draft-only — once goods have left, the
+   * way back is a receipt or another transfer.
+   */
+  stockTransfers: defineTable({
+    /** `TR-0007` from the `stockTransfer` sequence. */
+    number: v.string(),
+    status: v.union(
+      v.literal("draft"),
+      v.literal("inTransit"),
+      v.literal("received"),
+      v.literal("cancelled"),
+    ),
+    fromWarehouseId: v.id("warehouses"),
+    toWarehouseId: v.id("warehouses"),
+    note: v.optional(v.string()),
+    shippedAt: v.optional(v.number()),
+    /** Set when the last outstanding unit is received. */
+    receivedAt: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_number", ["number"])
+    .index("by_status", ["status", "createdAt"])
+    .index("by_from", ["fromWarehouseId", "status"])
+    .index("by_to", ["toWarehouseId", "status"]),
+
+  /** One product slice on a transfer. `receivedQty` grows with each receipt. */
+  stockTransferLines: defineTable({
+    transferId: v.id("stockTransfers"),
+    productId: v.id("products"),
+    variantId: v.optional(v.id("variants")),
+    lotId: v.optional(v.id("lots")),
+    /** Serials that leave the source. Empty when the line is not serial-tracked. */
+    serialIds: v.array(v.id("serials")),
+    /** Subset of `serialIds` already received at the destination. */
+    receivedSerialIds: v.array(v.id("serials")),
+    /** Positive amount that leaves the source on ship. */
+    qty: v.number(),
+    receivedQty: v.number(),
+    /** Latest source cost, captured at ship and copied onto each receipt. */
+    unitCost: v.optional(v.number()),
+  }).index("by_transfer", ["transferId"]),
+
+  /**
+   * Manual goods receipt (PH1-22). One posted document: the reference
+   * note says where the goods came from (a delivery note, an opening
+   * balance), and each line is a `receipt` on the ledger. Nothing here
+   * links a purchase order — that receiving flow is PH2-22. The document
+   * is not edited; a correction is another movement.
+   */
+  goodsReceipts: defineTable({
+    /** `GRN-0007` from the `goodsReceipt` sequence. */
+    number: v.string(),
+    warehouseId: v.id("warehouses"),
+    /** Required. Blank is refused. */
+    referenceNote: v.string(),
+    createdAt: v.number(),
+  })
+    .index("by_number", ["number"])
+    .index("by_warehouse", ["warehouseId", "createdAt"]),
+
+  goodsReceiptLines: defineTable({
+    receiptId: v.id("goodsReceipts"),
+    productId: v.id("products"),
+    variantId: v.optional(v.id("variants")),
+    lotId: v.optional(v.id("lots")),
+    serialIds: v.array(v.id("serials")),
+    qty: v.number(),
+    unitCost: v.optional(v.number()),
+    /** The ledger row this line posted. */
+    movementId: v.id("stockMovements"),
+  }).index("by_receipt", ["receiptId"]),
+
+  /**
+   * Reorder point (PH1-24). One row per product, or per product at one
+   * warehouse. A missing `warehouseId` is the product-wide point; a
+   * warehouse row overrides it there. `qty` is the available quantity
+   * at or below which the slice is low. The daily job reads these.
+   */
+  reorderPoints: defineTable({
+    productId: v.id("products"),
+    warehouseId: v.optional(v.id("warehouses")),
+    qty: v.number(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_product", ["productId"]),
+
+  /**
+   * An open low-stock notice (PH1-24). The daily job inserts one when
+   * a slice first falls to its reorder point, and sets `open` false
+   * once available rises above it. A slice that stays low is not
+   * notified again.
+   */
+  lowStockNotices: defineTable({
+    productId: v.id("products"),
+    variantId: v.optional(v.id("variants")),
+    warehouseId: v.id("warehouses"),
+    open: v.boolean(),
+    openedAt: v.number(),
+    closedAt: v.optional(v.number()),
+  })
+    .index("by_open", ["open"])
+    .index("by_product_warehouse", ["productId", "warehouseId"]),
 });

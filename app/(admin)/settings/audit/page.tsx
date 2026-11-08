@@ -2,7 +2,7 @@
 
 import { usePaginatedQuery, useQuery } from "convex/react";
 import { useState } from "react";
-import { Dialog, DialogTrigger, Modal, ModalOverlay } from "@/components/application/modals/modal";
+import { Dialog, Modal, ModalOverlay } from "@/components/application/modals/modal";
 import { Badge } from "@/components/base/badges/badges";
 import { Button } from "@/components/base/buttons/button";
 import { Input } from "@/components/base/input/input";
@@ -46,35 +46,33 @@ function Snapshot({ label, value }: { label: string; value: unknown }) {
 
 function DetailsDialog({ entry, onClose }: { entry: AuditRow | null; onClose: () => void }) {
   return (
-    <DialogTrigger isOpen={entry !== null} onOpenChange={(open) => !open && onClose()}>
-      <ModalOverlay>
-        <Modal className="sm:max-w-lg">
-          <Dialog className="flex max-h-[inherit] flex-col">
-            {entry ? (
-              <div className="flex max-h-[70vh] flex-col gap-4 overflow-y-auto p-6">
-                <div className="flex items-center gap-2">
-                  <Badge color={ACTION_COLOR[entry.action] ?? "gray"} size="sm">
-                    {entry.action}
-                  </Badge>
-                  <span className="text-secondary text-sm">
-                    {entry.entity} · {formatWhen(entry.createdAt)}
-                  </span>
-                </div>
-                <p className="text-primary text-sm font-medium">
-                  {entry.actorLabel ?? "System"}
-                  <span className="text-tertiary font-normal"> · {entry.entityId}</span>
-                </p>
-                <Snapshot label="Before" value={entry.before} />
-                <Snapshot label="After" value={entry.after} />
-                <Button color="secondary" size="lg" className="w-full" onPress={onClose}>
-                  Close
-                </Button>
+    <ModalOverlay isOpen={entry !== null} onOpenChange={(open) => !open && onClose()}>
+      <Modal className="sm:max-w-lg">
+        <Dialog className="flex max-h-[inherit] flex-col">
+          {entry ? (
+            <div className="flex max-h-[70vh] flex-col gap-4 overflow-y-auto p-6">
+              <div className="flex items-center gap-2">
+                <Badge color={ACTION_COLOR[entry.action] ?? "gray"} size="sm">
+                  {entry.action}
+                </Badge>
+                <span className="text-secondary text-sm">
+                  {entry.entity} · {formatWhen(entry.createdAt)}
+                </span>
               </div>
-            ) : null}
-          </Dialog>
-        </Modal>
-      </ModalOverlay>
-    </DialogTrigger>
+              <p className="text-primary text-sm font-medium">
+                {entry.actorLabel ?? "System"}
+                <span className="text-tertiary font-normal"> · {entry.entityId}</span>
+              </p>
+              <Snapshot label="Before" value={entry.before} />
+              <Snapshot label="After" value={entry.after} />
+              <Button color="secondary" size="lg" className="w-full" onPress={onClose}>
+                Close
+              </Button>
+            </div>
+          ) : null}
+        </Dialog>
+      </Modal>
+    </ModalOverlay>
   );
 }
 

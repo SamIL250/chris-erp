@@ -14,9 +14,10 @@ import { cx } from "@/utils/cx";
 
 export const DialogTrigger = AriaDialogTrigger;
 
-export const ModalOverlay = (props: AriaModalOverlayProps) => {
+export const ModalOverlay = ({ isDismissable = true, ...props }: AriaModalOverlayProps) => {
   return (
     <AriaModalOverlay
+      isDismissable={isDismissable}
       {...props}
       className={(state) =>
         cx(

@@ -183,13 +183,13 @@ describe("sequences settings API (PH0-30)", () => {
     expect(rows.find((row) => row.name === "invoice")?.prefix).toBe("FA-");
 
     const audit = await t.run((ctx) => ctx.db.query("auditLog").collect());
-    // First call created 10 rows and was audited; the idempotent re-run wasn't.
+    // First call created every sequence except the pre-seeded invoice.
     expect(audit).toHaveLength(1);
     expect(audit[0]).toMatchObject({
       action: "create",
       entity: "sequences",
       actorLabel: "owner@example.com",
-      after: { created: 10, total: DEFAULT_SEQUENCES.length },
+      after: { created: DEFAULT_SEQUENCES.length - 1, total: DEFAULT_SEQUENCES.length },
     });
   });
 

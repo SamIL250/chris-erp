@@ -11,6 +11,7 @@ import { Input } from "@/components/base/input/input";
 import { Select } from "@/components/base/select/select";
 import { MediaGallery, type GalleryImage } from "@/components/catalog/media-gallery";
 import { RichTextEditor } from "@/components/catalog/rich-text-editor";
+import { usePageLabel } from "@/components/shared/page-label";
 import { Card } from "@/components/ui/card";
 import {
   Form,
@@ -140,6 +141,7 @@ export function ProductForm({
   definitions,
   sets,
   categories,
+  canCreate,
   canDelete,
 }: {
   product: Doc<"products"> | null;
@@ -147,12 +149,14 @@ export function ProductForm({
   definitions: Doc<"attributeDefinitions">[];
   sets: Doc<"attributeSets">[];
   categories: CategoryRow[];
+  canCreate: boolean;
   canDelete: boolean;
 }) {
   const router = useRouter();
   const createMutation = useMutation(api.catalog.products.create);
   const updateMutation = useMutation(api.catalog.products.update);
   const removeMutation = useMutation(api.catalog.products.remove);
+  const duplicateMutation = useMutation(api.catalog.products.duplicate);
   const removeFile = useMutation(api.files.remove);
 
   const methods = useZodForm(productSchema, { defaultValues: productDefaults(product) });
@@ -186,6 +190,7 @@ export function ProductForm({
   const [serverError, setServerError] = useState<string | null>(null);
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [duplicating, setDuplicating] = useState(false);
 
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const savingRef = useRef(false);
@@ -485,6 +490,8 @@ export function ProductForm({
             ? "Unsaved changes"
             : "";
 
+  usePageLabel(title);
+
   const status = methods.watch("status");
   // Pricing (PH1-10): margin derives from the two watched price fields —
   // the server never stores it, and null hides the row rather than faking 0.
@@ -503,7 +510,42 @@ export function ProductForm({
             : "Catalog item — changes save automatically as you type."
         }
         actions={
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
+            {targetId !== null && canCreate ? (
+              <Button
+                color="secondary"
+                size="sm"
+                isLoading={duplicating}
+                onPress={() => {
+                  const id = targetId;
+                  setDuplicating(true);
+                  void duplicateMutation({ id })
+                    .then(({ id: copyId }) => {
+                      toast.success("Draft copy created");
+                      router.push(`/catalog/products/${copyId}`);
+                    })
+                    .catch((error: unknown) => {
+                      toast.error(toUserMessage(error));
+                      setDuplicating(false);
+                    });
+                }}
+              >
+                Duplicate
+              </Button>
+            ) : null}
+            {targetId !== null ? (
+              <Button
+                color="secondary"
+                size="sm"
+                onPress={() =>
+                  methods.setValue("status", status === "archived" ? "draft" : "archived", {
+                    shouldDirty: true,
+                  })
+                }
+              >
+                {status === "archived" ? "Restore to draft" : "Archive"}
+              </Button>
+            ) : null}
             {targetId !== null ? (
               <Button color="secondary" size="sm" href={`/catalog/products/${targetId}/variants`}>
                 Variants
@@ -563,7 +605,7 @@ export function ProductForm({
                 id: value,
                 label: PRODUCT_STATUS_LABELS[value],
               }))}
-              hint="Draft = hidden from the storefront (PH1-08 list filters on this)."
+              hint="Archived products leave pickers and the storefront, and stay recoverable here and under the catalog's Archived filter."
             />
             <FormSelect
               name="taxCategory"

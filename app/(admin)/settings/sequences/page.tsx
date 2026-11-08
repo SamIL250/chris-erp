@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery } from "convex/react";
 import { useState } from "react";
-import { Dialog, DialogTrigger, Modal, ModalOverlay } from "@/components/application/modals/modal";
+import { Dialog, Modal, ModalOverlay } from "@/components/application/modals/modal";
 import { Button } from "@/components/base/buttons/button";
 import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
 import {
@@ -53,7 +53,7 @@ const PADDING_ITEMS = ["1", "2", "3", "4", "5", "6"].map((digit) => ({
   label: `${digit} digit${digit === "1" ? "" : "s"}`,
 }));
 
-function EditForm({ row, onSaved }: { row: SequenceRow; onSaved: () => void }) {
+function EditForm({ row, onClose }: { row: SequenceRow; onClose: () => void }) {
   const update = useMutation(api.sequences.update);
   const [serverError, setServerError] = useState<string | null>(null);
   const methods = useZodForm(sequenceSchema, {
@@ -77,7 +77,7 @@ function EditForm({ row, onSaved }: { row: SequenceRow; onSaved: () => void }) {
         try {
           await update({ id: row._id, prefix: values.prefix, padding: values.padding });
           toast.success("Document numbering updated");
-          onSaved();
+          onClose();
         } catch (error) {
           setServerError(toUserMessage(error));
         }
@@ -109,6 +109,9 @@ function EditForm({ row, onSaved }: { row: SequenceRow; onSaved: () => void }) {
         </div>
 
         <FormActions>
+          <Button type="button" color="secondary" size="lg" onPress={onClose}>
+            Cancel
+          </Button>
           <Button
             type="submit"
             color="primary"
@@ -211,17 +214,15 @@ export default function DocumentNumberingPage() {
         />
       )}
 
-      <DialogTrigger isOpen={editing !== null} onOpenChange={(open) => !open && setEditing(null)}>
-        <ModalOverlay>
-          <Modal className="sm:max-w-md">
-            <Dialog className="flex max-h-[inherit] flex-col">
-              {editing ? (
-                <EditForm key={editing._id} row={editing} onSaved={() => setEditing(null)} />
-              ) : null}
-            </Dialog>
-          </Modal>
-        </ModalOverlay>
-      </DialogTrigger>
+      <ModalOverlay isOpen={editing !== null} onOpenChange={(open) => !open && setEditing(null)}>
+        <Modal className="sm:max-w-md">
+          <Dialog className="flex max-h-[inherit] flex-col">
+            {editing ? (
+              <EditForm key={editing._id} row={editing} onClose={() => setEditing(null)} />
+            ) : null}
+          </Dialog>
+        </Modal>
+      </ModalOverlay>
     </div>
   );
 }

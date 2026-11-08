@@ -31,6 +31,21 @@ export const PRODUCT_STATUS_LABELS: Record<ProductStatus, string> = {
   archived: "Archived",
 };
 
+/**
+ * Who may see a product (PH1-15). Archived is hidden from every picker and
+ * from the storefront, and stays recoverable: the catalog list omits it
+ * until the status filter is explicitly "archived". Drafts stay in staff
+ * pickers (a quote can still use one) and off the storefront — PH4 lists
+ * must use `isStorefrontListed`, not the picker rule.
+ */
+export function isPickerListed(status: ProductStatus): boolean {
+  return status !== "archived";
+}
+
+export function isStorefrontListed(status: ProductStatus): boolean {
+  return status === "active";
+}
+
 /** The PH0-24 taxGroups keys plus the category-level "no rate" option. */
 export const TAX_CATEGORIES = ["standard", "reduced", "zero", "exempt"] as const;
 export type TaxCategory = (typeof TAX_CATEGORIES)[number];

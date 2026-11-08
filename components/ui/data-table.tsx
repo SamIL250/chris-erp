@@ -115,7 +115,8 @@ export function DataTable<T extends object>({
         next.delete(id);
         // Don't leave the table sorted by an invisible column.
         if (sort?.key === id) onSortChange?.(undefined);
-      } else {
+      } else if (columns.some((column) => column.id !== id && !next.has(column.id))) {
+        // React Aria requires one visible column to be the row header.
         next.add(id);
       }
       return next;
@@ -197,6 +198,7 @@ export function DataTable<T extends object>({
             {(col: DataTableColumn<T>) => (
               <Table.Head
                 id={col.id}
+                isRowHeader={col.id === visibleColumns[0]?.id}
                 allowsSorting={col.sortable && !!onSortChange}
                 className={cx(
                   col.align === "right" && "text-right [&>div]:justify-end",

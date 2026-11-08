@@ -40,6 +40,12 @@ describe("toUserMessage", () => {
   });
 
   test("unknown messages pass through", () => {
+    expect(toUserMessage(new Error("NetworkError when attempting to fetch resource."))).toBe(
+      "Couldn't reach the server. Check your connection and try again.",
+    );
+    expect(toUserMessage(new Error("Failed to fetch"))).toBe(
+      "Couldn't reach the server. Check your connection and try again.",
+    );
     expect(toUserMessage(new Error("Some new library message"))).toBe("Some new library message");
     expect(toUserMessage("plain string")).toBe("plain string");
   });

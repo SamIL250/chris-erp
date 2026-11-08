@@ -33,6 +33,7 @@ export const DEFAULT_SEQUENCES: { name: string; prefix: string; padding: number 
   { name: "journal", prefix: "JRNL-", padding: 4 },
   { name: "rma", prefix: "RMA-", padding: 4 },
   { name: "workOrder", prefix: "WO-", padding: 4 },
+  { name: "stockTransfer", prefix: "TR-", padding: 4 },
 ];
 
 type SequenceDoc = { prefix: string; next: number; padding: number };

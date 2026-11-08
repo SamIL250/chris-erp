@@ -15,7 +15,7 @@ import type { Id } from "./_generated/dataModel";
  *   1. one demo organization (only while NONE exists — never touches yours)
  *   2. base currencies USD/EUR/GBP (missing codes only)
  *   3. canonical tax rates standard/reduced/zero (missing names only)
- *   4. the 11 default document sequences (PH0-25, already idempotent)
+ *   4. the default document sequences (PH0-25, already idempotent)
  *   5. one invited user per system role (`<role>@example.com`) with that
  *      role granted — invite codes returned in the result so a dev can set
  *      passwords without Resend. Existing users are only ever given a role

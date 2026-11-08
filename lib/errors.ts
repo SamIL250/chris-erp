@@ -41,6 +41,10 @@ const KNOWN: [RegExp, string][] = [
     "Password reset is not enabled on this server. Contact your administrator.",
   ],
   [/has been disabled/i, "This account has been disabled. Contact your administrator."],
+  [
+    /^(networkerror when attempting to fetch resource|failed to fetch)\.?$/i,
+    "Couldn't reach the server. Check your connection and try again.",
+  ],
   [/^missing .*newpassword/i, "Choose a new password."],
 ];
 

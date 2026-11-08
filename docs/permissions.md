@@ -91,6 +91,47 @@ _When adding a module: add a row here first, then the permission constant, then 
   `products.create` (catalog.create), `products.update`,
   `products.bulkStatus` (catalog.edit), `products.remove`
   (catalog.delete) (PH1-07, PH1-08);
+  `products.duplicate` (catalog.create — a copy is a new draft, not an
+  edit), `products.picker` (catalog.view — archived excluded; the
+  storefront must not use this query, drafts are still pickable)
+  (PH1-15);
+  `warehouses.list` (inventory.view), `warehouses.create`
+  (inventory.create), `warehouses.update` (inventory.edit),
+  `warehouses.remove` (inventory.delete) (PH1-16);
+  `stockMovements.list` (inventory.view), `stockMovements.post`
+  (inventory.create — raw ledger insert; rows are never edited or
+  removed) (PH1-17);
+  `stockMovements.balance`, `stockMovements.byWarehouse`
+  (inventory.view — on-hand, reserved, available; `value` is a
+  placeholder, not moving-average cost) (PH1-18);
+  `stockMovements.reserve`, `stockMovements.release`,
+  `stockMovements.allocate` (inventory.create — an order mutation
+  calls the helpers in its own transaction; these are the warehouse
+  entry points. A hold cannot exceed available stock) (PH1-19);
+  `stockMovements.adjust` (inventory.approve — damage and write-off
+  are negative, found is positive, a count correction may go either
+  way. A removal cannot pass what is reserved. Optional note and
+  image. The raw `post` action refuses type `adjustment`) (PH1-20);
+  `transfers.create` (inventory.create), `transfers.update` /
+  `transfers.ship` / `transfers.receive` (inventory.edit),
+  `transfers.cancel` (inventory.delete — drafts only),
+  `transfers.get` / `transfers.list` / `transfers.inTransit`
+  (inventory.view — goods leave the source on ship and arrive at the
+  destination only as they are received) (PH1-21);
+  `goodsReceipts.create` (inventory.create — manual intake; the
+  reference note is required; one ledger receipt per line; no purchase
+  order), `goodsReceipts.get` / `goodsReceipts.list` (inventory.view)
+  (PH1-22);
+  `stockMovements.positions` (inventory.view — one row per product
+  slice at a warehouse; `lowStock` is available at or below the
+  reorder point, and a slice with no point is not low) (PH1-23,
+  reading replaced in PH1-24);
+  `reorderPoints.set` / `reorderPoints.clear` (inventory.edit — a
+  warehouse point overrides the product-wide point; an inactive
+  warehouse cannot take a point), `reorderPoints.forProduct`
+  (inventory.view). The daily job `lowStock.scan` is internal: it
+  notifies active inventory editors once when a slice falls to its
+  point, and again only after available has risen above it (PH1-24);
   `variants.list` (catalog.view), `variants.sync`,
   `variants.update`, `variants.remove` (catalog.edit — variant rows are
   product-document matrix entries, so row-level changes ride the edit

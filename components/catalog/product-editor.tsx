@@ -102,6 +102,7 @@ export function ProductEditor({ id }: { id?: string }) {
       definitions={definitions}
       sets={sets}
       categories={categories}
+      canCreate={canCreate}
       canDelete={canDelete}
     />
   );

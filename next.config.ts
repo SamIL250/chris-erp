@@ -12,8 +12,12 @@ const isDev = process.env.NODE_ENV !== "production";
  *   is a per-request nonce threaded through the proxy.
  * - Dev adds `'unsafe-eval'` + explicit localhost websockets so HMR and
  *   tooling keep working.
- * - `img-src` allows `https:` for OAuth avatars (and later, pasted image
- *   URLs); Convex storage lives under `*.convex.cloud`.
+ * - `img-src` allows `https:` for OAuth avatars, Cloudinary delivery
+ *   URLs, and later pasted image URLs. Convex storage lives under
+ *   `*.convex.cloud`.
+ * - `connect-src` includes `api.cloudinary.com` because product images
+ *   are a signed POST straight from the browser (PH1-13). Without it
+ *   Firefox rejects that fetch as a network error.
  * - Google OAuth uses a full-page redirect, so `frame-src`/`frame-ancestors`
  *   can stay `'none'`.
  */
@@ -23,7 +27,7 @@ const contentSecurityPolicy = [
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob: https:",
   "font-src 'self' data:",
-  `connect-src 'self' https://*.convex.cloud wss://*.convex.cloud${
+  `connect-src 'self' https://api.cloudinary.com https://*.convex.cloud wss://*.convex.cloud${
     isDev ? " ws://localhost:3000 ws://127.0.0.1:3000" : ""
   }`,
   "worker-src 'self' blob:",

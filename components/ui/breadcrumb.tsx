@@ -29,7 +29,7 @@ export function Breadcrumb({ items, className }: { items: BreadcrumbItem[]; clas
                 </Link>
               ) : (
                 <span
-                  className="text-primary font-medium"
+                  className={isLast ? "text-primary font-medium" : "text-tertiary"}
                   aria-current={isLast ? "page" : undefined}
                 >
                   {item.label}

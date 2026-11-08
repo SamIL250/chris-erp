@@ -8,6 +8,7 @@ import { Badge } from "@/components/base/badges/badges";
 import { Button } from "@/components/base/buttons/button";
 import { Dropdown } from "@/components/base/dropdown/dropdown";
 import { Input } from "@/components/base/input/input";
+import { usePageLabel } from "@/components/shared/page-label";
 import { Card } from "@/components/ui/card";
 import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
 import { PageHeader } from "@/components/ui/page-header";
@@ -68,6 +69,7 @@ export function VariantsEditor({ id }: { id: string }) {
     productId: id as Id<"products">,
   });
   const sync = useMutation(api.catalog.variants.sync);
+  usePageLabel(existing && existing !== null ? existing.product.name : undefined);
   const update = useMutation(api.catalog.variants.update);
 
   // Local axis picks: `null` until first interaction, then the picked set

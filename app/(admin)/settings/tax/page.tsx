@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery } from "convex/react";
 import { useState } from "react";
-import { Dialog, DialogTrigger, Modal, ModalOverlay } from "@/components/application/modals/modal";
+import { Dialog, Modal, ModalOverlay } from "@/components/application/modals/modal";
 import { Badge } from "@/components/base/badges/badges";
 import { Button } from "@/components/base/buttons/button";
 import { Card } from "@/components/ui/card";
@@ -59,76 +59,82 @@ function RateDialog({
   });
 
   return (
-    <DialogTrigger isOpen onOpenChange={onOpenChange}>
-      <ModalOverlay>
-        <Modal className="sm:max-w-md">
-          <Dialog className="flex max-h-[inherit] flex-col">
-            <Form
-              methods={methods}
-              onSubmit={async (values) => {
-                setServerError(null);
-                const args = {
-                  name: values.name,
-                  code: values.code || undefined,
-                  rateBps: Math.round(values.percent * 100),
-                  inclusive: values.inclusive,
-                  active: values.active,
-                };
-                try {
-                  if (row) {
-                    await update({ id: row._id, ...args });
-                  } else {
-                    await create(args);
-                  }
-                  toast.success(row ? "Tax rate updated" : "Tax rate added");
-                  onOpenChange(false);
-                } catch (error) {
-                  setServerError(toUserMessage(error));
+    <ModalOverlay isOpen onOpenChange={onOpenChange}>
+      <Modal className="sm:max-w-md">
+        <Dialog className="flex max-h-[inherit] flex-col">
+          <Form
+            methods={methods}
+            onSubmit={async (values) => {
+              setServerError(null);
+              const args = {
+                name: values.name,
+                code: values.code || undefined,
+                rateBps: Math.round(values.percent * 100),
+                inclusive: values.inclusive,
+                active: values.active,
+              };
+              try {
+                if (row) {
+                  await update({ id: row._id, ...args });
+                } else {
+                  await create(args);
                 }
-              }}
-            >
-              <div className="space-y-5 p-6">
-                <div>
-                  <h2 className="text-display-xs text-primary font-semibold">
-                    {row ? "Edit tax rate" : "Add tax rate"}
-                  </h2>
-                  <p className="text-secondary text-md mt-1.5">
-                    Stored as exact basis points — 19.5% becomes 1950.
-                  </p>
-                </div>
-                {serverError ? <FormAlert message={serverError} /> : null}
-                <div className="grid gap-5 sm:grid-cols-2">
-                  <FormInput name="name" label="Name" placeholder="VAT 20%" required />
-                  <FormInput name="code" label="Short code" placeholder="VAT20" />
-                  <FormInput
-                    name="percent"
-                    label="Rate (%)"
-                    type="number"
-                    placeholder="19.5"
-                    required
-                  />
-                </div>
-                <FormCheckbox
-                  name="inclusive"
-                  label="Inclusive — quoted prices already contain this tax"
-                />
-                <FormCheckbox name="active" label="Active — available for documents" />
-                <FormActions>
-                  <Button
-                    type="submit"
-                    color="primary"
-                    size="lg"
-                    isLoading={methods.formState.isSubmitting}
-                  >
-                    {row ? "Save changes" : "Add rate"}
-                  </Button>
-                </FormActions>
+                toast.success(row ? "Tax rate updated" : "Tax rate added");
+                onOpenChange(false);
+              } catch (error) {
+                setServerError(toUserMessage(error));
+              }
+            }}
+          >
+            <div className="space-y-5 p-6">
+              <div>
+                <h2 className="text-display-xs text-primary font-semibold">
+                  {row ? "Edit tax rate" : "Add tax rate"}
+                </h2>
+                <p className="text-secondary text-md mt-1.5">
+                  Stored as exact basis points — 19.5% becomes 1950.
+                </p>
               </div>
-            </Form>
-          </Dialog>
-        </Modal>
-      </ModalOverlay>
-    </DialogTrigger>
+              {serverError ? <FormAlert message={serverError} /> : null}
+              <div className="grid gap-5 sm:grid-cols-2">
+                <FormInput name="name" label="Name" placeholder="VAT 20%" required />
+                <FormInput name="code" label="Short code" placeholder="VAT20" />
+                <FormInput
+                  name="percent"
+                  label="Rate (%)"
+                  type="number"
+                  placeholder="19.5"
+                  required
+                />
+              </div>
+              <FormCheckbox
+                name="inclusive"
+                label="Inclusive — quoted prices already contain this tax"
+              />
+              <FormCheckbox name="active" label="Active — available for documents" />
+              <FormActions>
+                <Button
+                  type="button"
+                  color="secondary"
+                  size="lg"
+                  onPress={() => onOpenChange(false)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  color="primary"
+                  size="lg"
+                  isLoading={methods.formState.isSubmitting}
+                >
+                  {row ? "Save changes" : "Add rate"}
+                </Button>
+              </FormActions>
+            </div>
+          </Form>
+        </Dialog>
+      </Modal>
+    </ModalOverlay>
   );
 }
 
@@ -163,73 +169,79 @@ function GroupDialog({
   ];
 
   return (
-    <DialogTrigger isOpen onOpenChange={onOpenChange}>
-      <ModalOverlay>
-        <Modal className="sm:max-w-md">
-          <Dialog className="flex max-h-[inherit] flex-col">
-            <Form
-              methods={methods}
-              onSubmit={async (values) => {
-                setServerError(null);
-                const args = {
-                  name: values.name,
-                  isDefault: values.isDefault,
-                  active: values.active,
-                  // Select stores strings; "" means no rate for that slot.
-                  rates: {
-                    standard: (values.standard || undefined) as Id<"taxRates"> | undefined,
-                    reduced: (values.reduced || undefined) as Id<"taxRates"> | undefined,
-                    zero: (values.zero || undefined) as Id<"taxRates"> | undefined,
-                  },
-                };
-                try {
-                  if (row) {
-                    await update({ id: row._id, ...args });
-                  } else {
-                    await create(args);
-                  }
-                  toast.success(row ? "Tax group updated" : "Tax group added");
-                  onOpenChange(false);
-                } catch (error) {
-                  setServerError(toUserMessage(error));
+    <ModalOverlay isOpen onOpenChange={onOpenChange}>
+      <Modal className="sm:max-w-md">
+        <Dialog className="flex max-h-[inherit] flex-col">
+          <Form
+            methods={methods}
+            onSubmit={async (values) => {
+              setServerError(null);
+              const args = {
+                name: values.name,
+                isDefault: values.isDefault,
+                active: values.active,
+                // Select stores strings; "" means no rate for that slot.
+                rates: {
+                  standard: (values.standard || undefined) as Id<"taxRates"> | undefined,
+                  reduced: (values.reduced || undefined) as Id<"taxRates"> | undefined,
+                  zero: (values.zero || undefined) as Id<"taxRates"> | undefined,
+                },
+              };
+              try {
+                if (row) {
+                  await update({ id: row._id, ...args });
+                } else {
+                  await create(args);
                 }
-              }}
-            >
-              <div className="space-y-5 p-6">
-                <div>
-                  <h2 className="text-display-xs text-primary font-semibold">
-                    {row ? "Edit tax group" : "Add tax group"}
-                  </h2>
-                  <p className="text-secondary text-md mt-1.5">
-                    Maps each product tax category to a rate. Customers get assigned a group in
-                    Phase 2.
-                  </p>
-                </div>
-                {serverError ? <FormAlert message={serverError} /> : null}
-                <FormInput name="name" label="Name" placeholder="UK VAT" required />
-                <div className="grid gap-5 sm:grid-cols-3">
-                  <FormSelect name="standard" label="Standard" items={rateItems} />
-                  <FormSelect name="reduced" label="Reduced" items={rateItems} />
-                  <FormSelect name="zero" label="Zero" items={rateItems} />
-                </div>
-                <FormCheckbox name="isDefault" label="Default group — assigned to new customers" />
-                <FormCheckbox name="active" label="Active — available for customers" />
-                <FormActions>
-                  <Button
-                    type="submit"
-                    color="primary"
-                    size="lg"
-                    isLoading={methods.formState.isSubmitting}
-                  >
-                    {row ? "Save changes" : "Add group"}
-                  </Button>
-                </FormActions>
+                toast.success(row ? "Tax group updated" : "Tax group added");
+                onOpenChange(false);
+              } catch (error) {
+                setServerError(toUserMessage(error));
+              }
+            }}
+          >
+            <div className="space-y-5 p-6">
+              <div>
+                <h2 className="text-display-xs text-primary font-semibold">
+                  {row ? "Edit tax group" : "Add tax group"}
+                </h2>
+                <p className="text-secondary text-md mt-1.5">
+                  Maps each product tax category to a rate. Customers get assigned a group in Phase
+                  2.
+                </p>
               </div>
-            </Form>
-          </Dialog>
-        </Modal>
-      </ModalOverlay>
-    </DialogTrigger>
+              {serverError ? <FormAlert message={serverError} /> : null}
+              <FormInput name="name" label="Name" placeholder="UK VAT" required />
+              <div className="grid gap-5 sm:grid-cols-3">
+                <FormSelect name="standard" label="Standard" items={rateItems} />
+                <FormSelect name="reduced" label="Reduced" items={rateItems} />
+                <FormSelect name="zero" label="Zero" items={rateItems} />
+              </div>
+              <FormCheckbox name="isDefault" label="Default group — assigned to new customers" />
+              <FormCheckbox name="active" label="Active — available for customers" />
+              <FormActions>
+                <Button
+                  type="button"
+                  color="secondary"
+                  size="lg"
+                  onPress={() => onOpenChange(false)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  color="primary"
+                  size="lg"
+                  isLoading={methods.formState.isSubmitting}
+                >
+                  {row ? "Save changes" : "Add group"}
+                </Button>
+              </FormActions>
+            </div>
+          </Form>
+        </Dialog>
+      </Modal>
+    </ModalOverlay>
   );
 }
 

@@ -2,8 +2,8 @@
 
 > **Companion to:** [`erp-research-and-features.md`](./erp-research-and-features.md) (research, decisions, feature priorities)
 > **Stack:** Next.js (App Router) · Convex · Untitled UI (components + icons) · Stripe · Resend · Tailwind v4
-> **Status:** Phase 1 🔄 in progress — track-flag rules shipped (12 / 25, Catalog & Inventory)
-> **Last updated:** 2026-10-20
+> **Status:** Phase 1 ✅ complete — stock correctness suite (25 / 25, Catalog & Inventory)
+> **Last updated:** 2026-11-08
 
 ---
 
@@ -35,7 +35,7 @@
 | Phase          | Focus                                              | Status         | Tasks   | Gate |
 | -------------- | -------------------------------------------------- | -------------- | ------- | ---- |
 | **Phase 0**    | Foundation (scaffold, auth, RBAC, settings, shell) | ✅ Complete    | 35 / 35 | ☑    |
-| **Phase 1**    | Catalog + Inventory core (schema-first)            | 🔨 In progress | 12 / 25 | ☐    |
+| **Phase 1**    | Catalog + Inventory core (schema-first)            | ✅ Complete    | 25 / 25 | ☑    |
 | **Phase 2**    | Sales & Procurement (O2C + P2P documents)          | ⬜ Not started | 0 / 29  | ☐    |
 | **Phase 3**    | Finance (double-entry, postings, reports)          | ⬜ Not started | 0 / 17  | ☐    |
 | **Phase 4**    | Ecommerce storefront (B2C + B2B portal)            | ⬜ Not started | 0 / 24  | ☐    |
@@ -165,10 +165,10 @@ chris-erp/
 **Goal:** Correct, auditable stock for multi-category products across warehouses — including the schema for serials/lots/expiry/warranty that later phases activate.
 **Exit criteria:**
 
-- [ ] Full product catalog maintainable (categories, attributes, variants, images)
-- [ ] Stock per warehouse provably correct under test (receipts, issues, transfers, adjustments)
-- [ ] `onHand` vs `available` (reserved) distinction working; low-stock alerts firing
-- [ ] Serial/lot/expiry/warranty **tables exist** with tests around helpers (UI waits for Phase 5)
+- [x] Full product catalog maintainable (categories, attributes, variants, images) — _archive hides a product from pickers and the storefront without deleting it; duplicate makes a draft copy (PH1-15)_
+- [x] Stock per warehouse provably correct under test (receipts, issues, transfers, adjustments) — _PH1-25: one scenario walks receive → transfer → reserve → issue → adjust and checks each warehouse's ledger sum against on-hand. A removal that would eat a hold is refused and writes nothing_
+- [x] `onHand` vs `available` (reserved) distinction working; low-stock alerts firing — _available is on-hand minus the hold (PH1-18), and the same suite keeps them apart after every step. Low stock notifies once per dip below the reorder point (PH1-24)_
+- [x] Serial/lot/expiry/warranty **tables exist** with tests around helpers (UI waits for Phase 5) — _warranty is not a third table: registration is `warrantyStart` + `warrantyMonths` on `serials`, and `warrantyLookup` answers valid/expired/none (PH1-14)_
 
 ### 1.1 Categories & attributes
 
@@ -187,22 +187,22 @@ chris-erp/
 - [x] **PH1-10** Pricing fields: `listPrice`, `costPrice` (display only — true moving average cost computed in inventory/finance), margin % shown to staff roles — _prices optional, finite, 0..MAX_PRICE (999999999.99 typo guard in `lib/pricing`, one cap shared with the variant price); cost is display-only (the moving-average cost arrives with inventory/finance) and margin derives at READ time (`marginPercent`, one decimal, negative margins shown not hidden — selling below cost is real); margin/cost are staff-side only: the storefront (PH4) must project listPrice alone; product `listPrice` is the variant override's display fallback (PH1-09 note, resolvePrice formalizes in PH2-07); prices ride the commercial audit snapshot + full-form no-op diff_ — shipped 2026-10-20: `listPrice`/`costPrice` on `products` (create/update validation, audit snapshot, update diff), `lib/pricing.ts` (MAX_PRICE + marginPercent), Pricing section in the editor filled (two inputs + live margin readout, negative in error color), facts panel rows, variants matrix price cell falls back to the product price, demo seed prices, 10 new tests → 193 total, E2E 19 checks
 - [x] **PH1-11** Units of measure + conversions (each → box → case) with purchase/sales UoM — _base `unitOfMeasure` field landed with PH1-06; this task adds the conversions + doc-level UoM_ — shipped 2026-11-05: per-product conversion CHAINS (`1 unit = factor × parent`, every chain terminating at the base — no global catalog: pack sizes are per-product by nature) + `purchaseUoM`/`salesUoM` doc-level defaults (must be the base or a conversion unit, so PH2 lines can always convert to base stock); codes normalize trim+lowercase (1–16, letters/digits + `.`/`-`) — one vocabulary across base/chain/doc fields; `lib/uom.ts` is the single validator+message source shared by the editor's build gate and the mutation (sku pattern); conversion rows diff as an ORDER-INSENSITIVE key set (reorder = no-op, no audit) and land in the audit snapshot; Inventory section gained the row editor (parent choices = base + other units, can't construct dangling chains) + doc-level selects; demo seed gives every product `unitOfMeasure: "each"` and the Lab Bench Stand the full chain
 - [x] **PH1-12** Track flags + fields per product: `serialTracked`, `lotTracked`, `expiryRequired`, `warrantyEligible`, `warrantyMonths`, `shelfLifeDays`, `allowBackorder` — _all seven fields landed with PH1-06 (names final); this task adds the rules/behavior (hard blocks, defaults, UI)_
-- [ ] **PH1-13** Images via Convex storage (upload, reorder, cover image), alt text — _`images[]` field landed with PH1-06 (cover-first); this task adds the upload/reorder flow_
-- [ ] **PH1-14** _(schema-first)_ `serials`, `lots` tables + helpers skeleton: serial state machine (available/reserved/shipped/returned/service/disabled), lot master (supplier, receivedDate, mfgDate, expiryDate, status: released/quarantined/recalled/expired) — with unit tests only
-- [ ] **PH1-15** Product duplicate + archive (archived hidden from all pickers/storefront)
+- [x] **PH1-13** Images (upload, reorder, cover image, alt text) — _`images[]` landed with PH1-06 as cover-first file ids; this task is the upload/reorder flow. **Decision (this phase): asset bytes live in Cloudinary, not Convex storage.** The `files` row stays the registry (`cloudinaryPublicId` + a permanent `url`); legacy Convex-storage rows still resolve through `resolveFileUrl`. `products.images` is `{ fileId, alt }[]` (index 0 = cover); `lib/images` is the alt rule (≤ 255, blank = decorative) shared by the editor and `products.create`/`update`; the Media gallery uploads with a signed direct POST, reorders, and defers deletion until the save succeeds_
+- [x] **PH1-14** _(schema-first)_ `serials`, `lots` tables + helpers skeleton: serial state machine (available/reserved/shipped/returned/service/disabled), lot master (supplier, receivedDate, mfgDate, expiryDate, status: released/quarantined/recalled/expired) — with unit tests only — _shipped 2026-11-08: tables + indexes, `lib/serials` / `lib/lots` (transitions, date order, effective expiry, warranty lookup). No public mutations — Phase 5 owns the workflows_
+- [x] **PH1-15** Product duplicate + archive (archived hidden from all pickers/storefront) — _shipped 2026-11-08: `products.duplicate` (catalog.create) copies fields, categories, attribute values, images, and variants into a draft with a derived SKU/slug and no barcode; `products.picker` and the default list omit archived (`isPickerListed`); drafts stay in staff pickers and off the storefront (`isStorefrontListed`); editor Archive / Restore and Duplicate buttons_
 
 ### 1.3 Warehouses & stock ledger
 
-- [ ] **PH1-16** `warehouses` table + admin CRUD (code, name, address, isDefault, active)
-- [ ] **PH1-17** `stockMovements` **append-only ledger**: type (receipt, issue, transferIn, transferOut, adjustment, reservation, release), qty (signed), product/variant, warehouse, lotId?, serialIds[], reference doc (type+id), unitCost at time of movement, actor, timestamp
-- [ ] **PH1-18** Derived stock queries: `onHand(productId, warehouseId)`, `available = onHand − reserved`; per-warehouse stock list with valuation placeholders
-- [ ] **PH1-19** Reservation engine: `reserve/release/allocate` helpers operating transactionally inside order mutations; over-reservation impossible (test proves it)
-- [ ] **PH1-20** Manual stock adjustment: reason codes (damage, count correction, write-off, found), qty +/- , optional photo note; role-gated
-- [ ] **PH1-21** Stock transfer workflow: draft → in-transit (goods out of source) → received (goods in dest); partial receipts; in-transit visible report
-- [ ] **PH1-22** Generic goods receipt (manual intake with reference note) — PO-linked receiving lands in Phase 2
-- [ ] **PH1-23** Inventory UI: stock list (filter warehouse/category/low-stock), product stock detail (ledger history + reserves), transfers pages, adjustments page
-- [ ] **PH1-24** Reorder points per product(+warehouse) + daily low-stock cron → notification
-- [ ] **PH1-25** Stock correctness test suite: multi-warehouse scenario (receive → transfer → reserve → issue → adjust) asserts ledger sums == on-hand; concurrent reservation test
+- [x] **PH1-16** `warehouses` table + admin CRUD (code, name, address, isDefault, active) — _shipped 2026-11-08: `warehouses` (code unique, uppercase), exactly one default, inactive rows stay listed, default can't be dropped or deactivated until another takes the flag; `/inventory/warehouses` (inventory.view/create/edit/delete). Product list shows the cover image_
+- [x] **PH1-17** `stockMovements` **append-only ledger**: type (receipt, issue, transferIn, transferOut, adjustment, reservation, release), qty (signed), product/variant, warehouse, lotId?, serialIds[], reference doc (type+id), unitCost at time of movement, actor, timestamp — _shipped 2026-11-08: `stockMovements` insert-only (`post` is the only writer; a correction is a new line). Sign is fixed by type in `lib/stock` (in/hold > 0, out/release < 0, adjustment ≠ 0). On-hand ignores holds; reserved is reservation + release. A variant product must name its variant; an inactive warehouse takes no new lines; named serials are one unit each and their status is not changed here_
+- [x] **PH1-18** Derived stock queries: `onHand(productId, warehouseId)`, `available = onHand − reserved`; per-warehouse stock list with valuation placeholders — _shipped 2026-11-08: `stock.balance` and `stock.byWarehouse` (inventory.view). On-hand sums physical lines, reserved sums reservation + release, available is the difference. `value` is on-hand × the latest physical unit cost, rounded to the cent — a placeholder until moving-average cost (PH3-06). No lines is a zero balance; a warehouse list only includes products that have moved there_
+- [x] **PH1-19** Reservation engine: `reserve/release/allocate` helpers operating transactionally inside order mutations; over-reservation impossible (test proves it) — _shipped 2026-11-08: `reserveStock` / `releaseStock` / `allocateStock` take the caller's mutation context (not `ctx.runMutation`) and read lines already written in that transaction. Quantity is a positive amount; the helper writes the ledger sign. A reserve cannot exceed available at that product, variant, and warehouse. Release and allocate cannot exceed what that document still holds, and allocate posts the release and the issue together so the hold ends as the units leave on-hand. Public `reserve` / `release` / `allocate` are `inventory.create` and audited — sales calls the helpers from the order mutation after its own permission check. A thrown transaction keeps none of the hold_
+- [x] **PH1-20** Manual stock adjustment: reason codes (damage, count correction, write-off, found), qty +/- , optional photo note; role-gated — _shipped 2026-11-08: `stock.adjust` (`inventory.approve` — warehouse, admin, owner). Damage and write-off are negative, found is positive, a count correction may go either way and never zero. A removal cannot take on-hand below what is still reserved. The note is optional (blank stored as absent, 500 characters); the photo is an existing image file. The raw `post` action refuses type `adjustment`, so a count change always carries a reason. No adjustments screen yet — that is PH1-23_
+- [x] **PH1-21** Stock transfer workflow: draft → in-transit (goods out of source) → received (goods in dest); partial receipts; in-transit visible report — _shipped 2026-11-08: `transfers.create` / `update` / `cancel` (draft only) / `ship` / `receive`, plus `get`, `list`, and `inTransit` (`inventory.view`). Ship posts a transfer-out for every line and drops source on-hand; a receipt posts a transfer-in for the quantity that arrived and leaves the document in transit until every line is complete. A ship that does not fit the free stock rolls back. Numbers come from the new `TR-` sequence. No transfers screen yet — that is PH1-23_
+- [x] **PH1-22** Generic goods receipt (manual intake with reference note) — PO-linked receiving lands in Phase 2 — _shipped 2026-11-08: `goodsReceipts.create` (`inventory.create`) posts the document and one ledger receipt per line in the same transaction. The reference note is required (delivery note, opening balance). Number is `GRN-`. A bad line rolls the whole intake back. No purchase order, no draft, no edit — a correction is another movement. `get` and `list` are `inventory.view`. The receiving screen is PH1-23; receiving against a PO is PH2-22_
+- [x] **PH1-23** Inventory UI: stock list (filter warehouse/category/low-stock), product stock detail (ledger history + reserves), transfers pages, adjustments page — _shipped 2026-11-08: `/inventory` opens the stock list. Filters are warehouse, category, and low stock, which until PH1-24 means nothing available to promise. A row opens the product at that warehouse: on-hand, reserved, available, the placeholder value, the reservation lines, and the ledger. Transfers list defaults to the in-transit report; a draft can be shipped and received in part. Adjustments post through `stock.adjust` (`inventory.approve`) with a reason, a note, and an optional photo. The manual receipt screens landed here too, since PH1-22 left them for this task_
+- [x] **PH1-24** Reorder points per product(+warehouse) + daily low-stock cron → notification — _shipped 2026-11-08: a point sits on the product, and a warehouse row overrides it there (`reorderPoints.set` / `clear`, `inventory.edit`). Low stock is available at or below that point; a slice with no point is never low, and an inactive warehouse is skipped. The stock list filter is “Below reorder point”. The daily job at 06:00 UTC notifies active inventory editors once per dip and again only after the slice has risen above the point. The stock-correctness suite is PH1-25_
+- [x] **PH1-25** Stock correctness test suite: multi-warehouse scenario (receive → transfer → reserve → issue → adjust) asserts ledger sums == on-hand; concurrent reservation test — _shipped 2026-11-08: `tests/stockCorrectness.test.ts`. Ten received at MAIN, four transferred and received at EAST, three reserved there, two issued at MAIN, one written off as damage. After every step the balance query matches an independent sum of the ledger, and a further write-off that would take the hold is refused. Two reservations started together both stick when they fit, and exactly one sticks when they would oversell_
 
 ---
 
@@ -1157,18 +1157,390 @@ inserted the gel idempotently; 8 DEMO rows verified against the seed).
 **Next up:** PH1-13 — product images (upload/reorder/cover via Convex
 storage; the `images[]` field landed with PH1-06).
 
-| Date       | Session         | Shipped (task IDs) | Decisions / notes                                                                                                                              | Next up                            |
-| ---------- | --------------- | ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------- |
-| 2026-10-04 | Plan created    | —                  | Research doc + development plan aligned with scoping decisions                                                                                 | Start Phase 0 (PH0-01…)            |
-| 2026-10-05 | Phase 1 start   | PH1-01             | Category tree backend; global unique slugs, computed paths, guarded moves                                                                      | PH1-02 (category admin UI)         |
-| 2026-10-05 | Phase 1 (cont.) | PH1-02             | Category admin UI + stats; products core landed early (PH1-06 note); demo catalog seed (CT-03)                                                 | PH1-03 (attribute definitions)     |
-| 2026-10-05 | Phase 1 (cont.) | PH1-03             | Attribute definitions backend (type/unit/options shape rules); admin UI folded into PH1-04 (plan amended)                                      | PH1-04 (attribute sets + admin UI) |
-| 2026-10-05 | Phase 1 (cont.) | PH1-04             | Attribute sets + `forCategory` inheritance resolver + Attributes admin UI; definitions delete guard                                            | PH1-05 (storefront indexes)        |
-| 2026-10-05 | Phase 1 (cont.) | PH1-05             | urlPath + by_url_path, productCategories join (Convex: no array-contains index), attributeValues facets                                        | PH1-06 (products table fields)     |
-| 2026-10-05 | Phase 1 (cont.) | PH1-06             | Products field manifest + by_barcode, lib/sku rules, categories.remove products guard; null-key finding                                        | PH1-07 (product editor)            |
-| 2026-10-06 | Phase 1 (cont.) | PH1-07             | Product editor + CRUD: SKU verbatim + by_sku uniqueness, same-txn join sync, values diff, E2E 37 checks                                        | PH1-08 (product list)              |
-| 2026-10-06 | Phase 1 (cont.) | PH1-08             | Product list: bounded-scan list query + brands facet + bulkStatus (per-changed-row audit), E2E 41 checks                                       | PH1-09 (variants)                  |
-| 2026-10-20 | Phase 1 (cont.) | PH1-09             | Variant matrices: cartesian sync w/ preserve-by-coordinate + derived SKUs, SKU namespace shared w/ products, E2E 30 checks                     | PH1-10 (pricing fields)            |
-| 2026-10-20 | Phase 1 (cont.) | PH1-10             | Pricing fields: listPrice/costPrice + read-time margin % (staff-only display, negative shown), product price = variant fallback, E2E 19 checks | PH1-11 (UoM conversions)           |
-| 2026-11-05 | Phase 1 (cont.) | PH1-11             | UoM + per-product conversion chains (1 unit = factor × parent, tree to base), doc-level UoM defaults, order-insensitive no-op diff, E2E 33     | PH1-12 (track-flag rules)          |
-| 2026-11-05 | Phase 1 (cont.) | PH1-12             | Track-flag rules: 4 shared hard blocks (serial ⊥ lot, expiry ⇒ lot, months ⇒ eligible, shelf ⇒ expiry), UI dependency clears, flags in audit   | PH1-13 (product images)            |
+### 2026-11-08 · Phase 1 (PH1-13) — plan catch-up
+
+**Shipped:** the product image flow was already in the tree; this entry
+records it and the storage decision the task line still had wrong.
+
+- **Cloudinary, not Convex storage.** Signed direct upload
+  (`files.generateCloudinarySignature` → browser POST → `files.saveCloudinary`).
+  The API secret stays on the deployment. `files` remains the registry:
+  Cloudinary rows keep `cloudinaryPublicId` + a permanent `url`; pre-PH1-13
+  Convex-storage rows still resolve (signed URL re-minted on read). Callers
+  persist `fileId`, never a URL. The same picker serves product images,
+  avatars, and the company logo.
+- **Attachment shape:** `products.images` is cover-first `{ fileId, alt }[]`.
+  Order is the display order (index 0 badged Cover). Alt text is on the
+  attachment, not the file, so the same bytes can be described per use.
+  `lib/images` is the one message (≤ 255; blank stores as absent). The
+  mutation rejects a missing file and a too-long alt before any patch, and
+  a reorder or alt edit is a real audit change.
+- **Gallery** (`components/catalog/media-gallery.tsx`): add, drag-and-drop,
+  move, make cover, alt, remove. Removal is deferred until a save excludes
+  the file, so a failed save can't drop a byte the form still references.
+
+**Decision:** Convex storage stays only as the legacy reader. New bytes
+go to Cloudinary.
+
+**Next up:** PH1-14 — `serials` / `lots` tables and helper tests.
+
+### 2026-11-08 · Phase 1 (PH1-14)
+
+**Shipped:** schema-first serial and lot masters, plus the pure helpers
+Phase 5's receipt and pick mutations will call. No UI, no public
+mutations (the guards sweep is unchanged). **Phase 1: 14/25.** The
+serial/lot/expiry/warranty exit criterion is met; the other three stay
+open (archive, then the stock ledger).
+
+- **`serials`:** `number` (trim only, case kept — a scan must match),
+  `productId`, optional `variantId`, `status`. Indexes `by_number`,
+  `by_product`, `by_product_status`, `by_status`. Warranty registration
+  is columns on this row (`warrantyStart`, `warrantyMonths` snapshotted
+  at shipment), not a third table.
+- **`lots`:** `number`, optional `supplier` (a label until `vendors`
+  exists in PH2-03), `receivedDate`, optional `mfgDate` / `expiryDate`,
+  `status`. Indexes `by_product`, `by_product_number`, `by_product_expiry`
+  (null expiry sorts first, so a FEFO range over real dates skips it),
+  `by_status`. Quantity is not on the lot — the ledger (PH1-17) will
+  point at `lotId`. `warehouseId` and `customerId` wait until those
+  tables exist.
+- **`lib/serials`:** transitions
+  `available → reserved|disabled`, `reserved → available|shipped`,
+  `shipped → returned`, `returned → available|service|disabled`,
+  `service → available|shipped|disabled`, `disabled` terminal. Same
+  state is a no-op. `warrantyLookup` uses UTC calendar months (a 24-month
+  term from 31 Jan ends 31 Jan two years later).
+- **`lib/lots`:** `released ↔ quarantined`, both may become `recalled` or
+  `expired`; recall and expiry stick. `effectiveLotStatus` reads a
+  released lot past its expiry as `expired` without a write; quarantine
+  and recall outrank the date. `lotBlocksSale` is that answer as a
+  boolean for PH5-07.
+
+**Pipeline:** prettier → tsc → **235 tests / 31 files** (+12
+`serialsLots`: both machines, illegal jumps, warranty boundaries, lot
+date order, expiry-blocks-sale, index round trip including the null
+expiry key).
+
+**Next up:** PH1-15 — product duplicate + archive.
+
+### 2026-11-08 · Phase 1 (PH1-15)
+
+**Shipped:** duplicate a product into a recoverable draft, and keep
+archived products out of pickers and the storefront. **Phase 1: 15/25.**
+The catalog exit criterion is met. Stock (PH1-16 onward) is what's left
+of the phase.
+
+- **`products.duplicate`** (`catalog.create`, one create audit on the
+  copy, `sourceId` in the snapshot). Copies fields, category join,
+  attribute values, images (same file rows), variant axes, and variant
+  rows. Status is always `draft`. Name gains ` (copy)`. SKU is
+  `<base>-COPY`, then `-COPY2`…, trimmed to 32 from the base so the
+  suffix survives. Slug derives from the new name. Barcodes are NOT
+  copied (a scan must resolve to one thing). Serials and lots stay on
+  the source — they are physical units.
+- **Hidden, not deleted.** `isPickerListed` is everything except
+  archived. The catalog list and `products.brands` omit archived unless
+  the status filter is explicitly `archived` (that's the way back;
+  Archive on the editor and the bulk bar set that status, Restore
+  returns it to draft). `products.picker` is the staff selector contract.
+  `isStorefrontListed` is `active` only — drafts stay in staff pickers
+  and off the store. PH4 must use that helper, not `picker`.
+
+**Pipeline:** prettier → tsc → **240 tests / 32 files** (+5
+`productDuplicate`: visibility, picker, copy round trip, second-copy
+suffix, 32-char SKU, sales allowed / warehouse denied).
+
+**Next up:** PH1-16 — warehouses table + admin CRUD.
+
+### 2026-11-08 · Phase 1 (PH1-16)
+
+**Shipped:** warehouse master data and the admin screen that maintains
+it. **Phase 1: 16/25.** The product list also shows each product's
+cover image.
+
+- **`warehouses`:** `code` (trim, uppercase, unique, letters/digits/
+  dashes, ≤ 16), `name` (≤ 100), optional free-text `address` (blank
+  stores as absent, ≤ 500), `isDefault`, `active`. Indexes `by_code`,
+  `by_active`.
+- **One default.** The first warehouse is the default and active even
+  if the form says otherwise. Making another the default clears the
+  previous flag in the same transaction. The current default cannot be
+  unmarked, deactivated, or removed until another warehouse takes the
+  flag. An inactive warehouse cannot be made the default. Inactive rows
+  stay listed — later ledger history will still name them.
+- **Permissions:** `list` is `inventory.view` (Sales can read), `create`
+  / `update` / `remove` follow create/edit/delete. A no-op save writes
+  no audit. UI at `/inventory/warehouses`; `/inventory` redirects there.
+  Inventory in the sidebar is now a group.
+- **Product list:** the Product column shows the cover (images[0]) and
+  a `+N` when more images are attached. No image stays the placeholder.
+
+**Pipeline:** prettier → tsc → **247 tests / 33 files** (+7
+`warehouses`: field rules, first-is-default, code clash, default
+guards, address clear, no-op audit, last-row delete, sales vs
+anonymous).
+
+**Next up:** PH1-17 — append-only stock ledger.
+
+### 2026-11-08 · Phase 1 (PH1-17)
+
+**Shipped:** the append-only stock ledger. **Phase 1: 17/25.** No
+inventory screen yet — the list and the post are the contract PH1-18
+through PH1-22 will call.
+
+- **`stockMovements`:** type, signed `qty`, `productId`, optional
+  `variantId`, `warehouseId`, optional `lotId`, `serialIds[]`, optional
+  reference (`type` + `id`, both or neither), optional `unitCost`,
+  `actorId`, `createdAt`. No `updatedAt`. Indexes by product, product +
+  warehouse, warehouse, lot, and reference. The module never patches or
+  deletes a row.
+- **Sign.** Receipt, transfer in, and reservation are greater than zero.
+  Issue, transfer out, and release are less than zero. Adjustment is
+  either sign except zero. `onHandDelta` ignores holds; `reservedDelta`
+  ignores physical lines. `available = onHand − reserved` is the PH1-18
+  read, not a stored number.
+- **Guards.** `post` is `inventory.create` (Sales can list, not post).
+  A product that has variants must name one of them. An inactive
+  warehouse takes no new line. A lot or serial must belong to the same
+  product (and variant, when both name one). When serials are listed,
+  |qty| equals how many, and the serial's status is left alone — Phase
+  5 changes that. `postMovement` is the helper later workflows call
+  inside their own transaction.
+
+**Pipeline:** prettier → tsc → **260 tests / 35 files** (+9
+`stockMovements`: sign sums, append, inactive warehouse, variant, lot,
+serial count, sales vs anonymous, no patch/delete in the module).
+
+**Next up:** PH1-18 — derived on-hand and available.
+
+### 2026-11-08 · Phase 1 (PH1-18)
+
+**Shipped:** derived stock balances. **Phase 1: 18/25.** Still no
+inventory screen — these are the queries PH1-23 will render.
+
+- **`stock.balance(productId, warehouseId, variantId?)`**
+  (`inventory.view`). On-hand is the sum of physical lines. Reserved is
+  the sum of reservation + release. Available is on-hand minus reserved,
+  computed on read. Omit the variant to total every variant of the
+  product at that warehouse. No lines yet is a zero balance, not an
+  error. A total that cannot see every line (more than 5000) refuses
+  rather than returning a short sum.
+- **`stock.byWarehouse`** lists each product/variant that has moved at
+  that warehouse, including a position that has since netted to zero.
+  Name and SKU come from the product (the variant SKU when the line
+  named one).
+- **Valuation is a placeholder.** `unitCost` is the latest physical
+  line that recorded one; `value` is on-hand × that cost, to the cent.
+  A hold's cost is ignored. This is not moving-average cost — that
+  engine is PH3-06.
+
+**Pipeline:** prettier → tsc → **263 tests / 35 files** (+3 in
+`stockMovements`: balance math, warehouse isolation, zero balance,
+sales can read, anonymous cannot).
+
+**Next up:** PH1-19 — reservation engine.
+
+### 2026-11-08 · Phase 1 (PH1-19)
+
+**Shipped:** reservation engine. **Phase 1: 19/25.** Still no inventory
+screen — an order mutation calls the helpers; the warehouse entry
+points are `stock.reserve`, `stock.release`, and `stock.allocate`.
+
+- **Same transaction.** `reserveStock`, `releaseStock`, and
+  `allocateStock` take the caller's mutation context. They read the
+  ledger lines already written in that transaction, then insert through
+  `postMovement`. `ctx.runMutation` would be a second transaction and
+  could over-reserve.
+- **A hold cannot exceed what is free.** The quantity is a positive
+  amount. Reserve refuses anything above available at that product,
+  variant, and warehouse (`Only N available to reserve.`). Release and
+  allocate refuse anything above what that document still holds.
+- **Allocate is a release plus an issue** of the same quantity. The
+  hold ends and the units leave on-hand together. Available stays
+  reduced by the units that shipped.
+- **A thrown transaction keeps nothing it wrote.** The test reserves 4
+  of 5, then proves a second reserve of 2 fails and the ledger still
+  has exactly one reservation. A callback that reserves and then throws
+  leaves that reservation unwritten.
+
+**Pipeline:** prettier → tsc → **269 tests / 36 files** (+6 in
+`reservations`: over-reserve, same-transaction visibility, rollback,
+document-scoped release and allocate, refused allocation, sales vs
+anonymous).
+
+**Next up:** PH1-20 — manual stock adjustment.
+
+### 2026-11-08 · Phase 1 (PH1-20)
+
+**Shipped:** manual stock adjustments. **Phase 1: 20/25.** Still no
+adjustments screen — that page is PH1-23. Warehouse staff post through
+`stock.adjust`.
+
+- **The reason fixes the sign.** Damage and write-off leave the shelf
+  (negative). Found stock arrives (positive). A count correction may
+  go either way and cannot be zero. The raw `post` action refuses an
+  adjustment, so this path is the only one that writes the type.
+- **A removal stops at the hold.** On-hand cannot fall below what is
+  still reserved. With 5 on hand and 4 reserved, a write-off of 2
+  fails (`Only 1 can be removed`) and a write-off of 1 leaves available
+  at zero.
+- **Note and photo are optional.** A blank note is stored as absent.
+  A present note is at most 500 characters. The photo is an existing
+  `files` row whose type is an image.
+- **Role gate is `inventory.approve`.** Warehouse, admin, and owner
+  can adjust. Sales and accountant can read stock and cannot post a
+  count change. The write is audited.
+
+**Pipeline:** prettier → tsc → **274 tests / 37 files** (+5 in
+`adjustments`: reason signs, note and photo, reserved floor, sales
+denied, raw post refused).
+
+**Next up:** PH1-21 — stock transfer workflow.
+
+### 2026-11-08 · Phase 1 (PH1-21)
+
+**Shipped:** stock transfers. **Phase 1: 21/25.** Still no transfers
+screen — that page is PH1-23. Warehouse staff run the document through
+`transfers`.
+
+- **Draft holds nothing.** Create names the source, the destination,
+  and the lines (`TR-0001` from the new sequence). The two warehouses
+  must differ and be active. Update and cancel work only while the
+  document is a draft.
+- **Ship takes the goods off the source.** One transfer-out per line,
+  for the whole quantity, at the latest source cost. On-hand at the
+  destination does not change. A line that exceeds what is free (on-hand
+  minus reserved) fails the whole ship, and the draft stays a draft.
+- **Receipts can be partial.** Each receipt posts a transfer-in for the
+  quantity that arrived. The document stays in transit, and on the
+  in-transit report, until every line is fully received. Receiving more
+  than is still outstanding is refused and posts nothing.
+- **Who can do it.** Create is `inventory.create`. Update, ship, and
+  receive are `inventory.edit`. Cancel is `inventory.delete`. The report
+  is `inventory.view`, so sales can see what is on the road and cannot
+  move it. Each write is audited.
+
+**Pipeline:** prettier → tsc → **278 tests / 38 files** (+4 in
+`transfers`: rules, partial receipt, short shelf rolls back, cancel
+and sales denied).
+
+**Next up:** PH1-22 — generic goods receipt.
+
+### 2026-11-08 · Phase 1 (PH1-22)
+
+**Shipped:** manual goods receipts. **Phase 1: 22/25.** Still no
+receiving screen — that page is PH1-23. Receiving against a purchase
+order is PH2-22.
+
+- **One posted document.** `goodsReceipts.create` writes the receipt
+  and one ledger `receipt` per line in the same transaction. The number
+  is `GRN-0001`. There is no draft and no edit. A correction is a later
+  adjustment.
+- **The reference note is required.** It is the record of where the
+  goods came from — a delivery note, an opening balance. Blank is
+  refused. A line carries an optional unit cost onto the ledger, so the
+  stock value placeholder can see it.
+- **A bad line keeps nothing.** Duplicate serials, an inactive
+  warehouse, or a product listed twice refuse the intake. No receipt
+  row and no ledger row remain.
+- **Who can do it.** Create is `inventory.create`. `get` and `list` are
+  `inventory.view`, so sales can read a receipt and cannot post one.
+
+**Pipeline:** prettier → tsc → **282 tests / 39 files** (+4 in
+`goodsReceipts`: note, on-hand and cost, rollback, sales denied).
+
+**Next up:** PH1-23 — inventory UI.
+
+### 2026-11-08 · Phase 1 (PH1-23)
+
+**Shipped:** the inventory screens. **Phase 1: 23/25.**
+
+- **Stock list.** `stock.positions` (`inventory.view`) groups the ledger
+  by product, variant, and warehouse. Filters are warehouse, category,
+  and low stock. Low stock is “nothing available” until reorder points
+  (PH1-24) replace that reading.
+- **Product detail.** One warehouse at a time: on-hand, reserved,
+  available, the placeholder value, the reservation and release lines,
+  and the full ledger (newest last).
+- **Transfers.** The list opens on the in-transit report. A new draft
+  can be shipped and received in part from the document page. Cancel is
+  drafts only.
+- **Adjustments.** Reason fixes the sign. The note and the photo are
+  optional. Posting needs `inventory.approve`.
+- **Receipts.** The manual intake screen PH1-22 deferred: list, post
+  (required reference note, optional unit cost), and a read-only
+  document. No purchase order.
+
+**Pipeline:** prettier → tsc → **283 tests / 40 files** (+1 in
+`stockPositions`).
+
+**Next up:** PH1-24 — reorder points.
+
+### 2026-11-08 · Phase 1 (PH1-24)
+
+**Shipped:** reorder points and the daily low-stock notice. **Phase 1: 24/25.**
+
+- **Points.** `reorderPoints.set` upserts a product-wide point or a
+  warehouse override (`inventory.edit`). The warehouse point wins
+  there. `clear` removes that one row. Viewers can read the numbers
+  (`forProduct`, `inventory.view`) and cannot change them.
+- **Low stock.** The stock list and the product page compare available
+  to the effective point. At or below the point is low. No point means
+  not low, even at zero. Inactive warehouses are skipped.
+- **Daily job.** 06:00 UTC. One warning per dip to each active user
+  with `inventory.edit`. The notice stays open while the slice stays
+  low, closes when available rises above the point, and the next dip
+  notifies again. A product with a point and no ledger lines is
+  treated as zero at each active warehouse it covers.
+
+**Pipeline:** prettier → tsc → **287 tests / 41 files** (+4 in
+`reorderPoints`).
+
+**Next up:** PH1-25 — stock correctness suite.
+
+### 2026-11-08 · Phase 1 (PH1-25)
+
+**Shipped:** the stock correctness suite. **Phase 1: 25/25, gate closed.**
+
+- **One path, two warehouses.** Ten received at MAIN, four shipped and
+  received at EAST, three reserved there, two issued at MAIN, one
+  written off as damage. After every step the balance query matches an
+  independent sum of the ledger. On-hand and available stay apart
+  while the hold is open. A further write-off that would take the hold
+  is refused and adds no line. Company on-hand ends at 7.
+- **Together.** Two reservations started in the same moment both stick
+  when they fit. When each would take the last unit, exactly one
+  sticks and the other is told what is still free.
+
+**Pipeline:** tsc → **289 tests / 42 files** (+2 in `stockCorrectness`).
+
+**Next up:** PH2-01 — customers.
+
+| Date       | Session         | Shipped (task IDs) | Decisions / notes                                                                                                                                     | Next up                            |
+| ---------- | --------------- | ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------- |
+| 2026-10-04 | Plan created    | —                  | Research doc + development plan aligned with scoping decisions                                                                                        | Start Phase 0 (PH0-01…)            |
+| 2026-10-05 | Phase 1 start   | PH1-01             | Category tree backend; global unique slugs, computed paths, guarded moves                                                                             | PH1-02 (category admin UI)         |
+| 2026-10-05 | Phase 1 (cont.) | PH1-02             | Category admin UI + stats; products core landed early (PH1-06 note); demo catalog seed (CT-03)                                                        | PH1-03 (attribute definitions)     |
+| 2026-10-05 | Phase 1 (cont.) | PH1-03             | Attribute definitions backend (type/unit/options shape rules); admin UI folded into PH1-04 (plan amended)                                             | PH1-04 (attribute sets + admin UI) |
+| 2026-10-05 | Phase 1 (cont.) | PH1-04             | Attribute sets + `forCategory` inheritance resolver + Attributes admin UI; definitions delete guard                                                   | PH1-05 (storefront indexes)        |
+| 2026-10-05 | Phase 1 (cont.) | PH1-05             | urlPath + by_url_path, productCategories join (Convex: no array-contains index), attributeValues facets                                               | PH1-06 (products table fields)     |
+| 2026-10-05 | Phase 1 (cont.) | PH1-06             | Products field manifest + by_barcode, lib/sku rules, categories.remove products guard; null-key finding                                               | PH1-07 (product editor)            |
+| 2026-10-06 | Phase 1 (cont.) | PH1-07             | Product editor + CRUD: SKU verbatim + by_sku uniqueness, same-txn join sync, values diff, E2E 37 checks                                               | PH1-08 (product list)              |
+| 2026-10-06 | Phase 1 (cont.) | PH1-08             | Product list: bounded-scan list query + brands facet + bulkStatus (per-changed-row audit), E2E 41 checks                                              | PH1-09 (variants)                  |
+| 2026-10-20 | Phase 1 (cont.) | PH1-09             | Variant matrices: cartesian sync w/ preserve-by-coordinate + derived SKUs, SKU namespace shared w/ products, E2E 30 checks                            | PH1-10 (pricing fields)            |
+| 2026-10-20 | Phase 1 (cont.) | PH1-10             | Pricing fields: listPrice/costPrice + read-time margin % (staff-only display, negative shown), product price = variant fallback, E2E 19 checks        | PH1-11 (UoM conversions)           |
+| 2026-11-05 | Phase 1 (cont.) | PH1-11             | UoM + per-product conversion chains (1 unit = factor × parent, tree to base), doc-level UoM defaults, order-insensitive no-op diff, E2E 33            | PH1-12 (track-flag rules)          |
+| 2026-11-05 | Phase 1 (cont.) | PH1-12             | Track-flag rules: 4 shared hard blocks (serial ⊥ lot, expiry ⇒ lot, months ⇒ eligible, shelf ⇒ expiry), UI dependency clears, flags in audit          | PH1-13 (product images)            |
+| 2026-11-08 | Phase 1 (cont.) | PH1-13             | Product images already in tree: Cloudinary signed upload (not Convex storage), cover-first `{ fileId, alt }`, gallery reorder; plan catch-up          | PH1-14 (serial/lot schema)         |
+| 2026-11-08 | Phase 1 (cont.) | PH1-14             | `serials` + `lots` tables and indexes; state machines, lot date/expiry, warranty lookup. No mutations — UI waits for Phase 5. 235 tests               | PH1-15 (duplicate + archive)       |
+| 2026-11-08 | Phase 1 (cont.) | PH1-15             | Duplicate → draft (`-COPY` SKU, no barcode, variants/values/images copied). Archived hidden from list/picker unless the status filter asks. 240 tests | PH1-16 (warehouses)                |
+| 2026-11-08 | Phase 1 (cont.) | PH1-16             | Warehouses CRUD: unique code, one default, inactive stays listed. Product list shows the cover. 247 tests                                             | PH1-17 (stock ledger)              |
+| 2026-11-08 | Phase 1 (cont.) | PH1-17             | Append-only `stockMovements`: signed qty by type, variant/warehouse/serial guards. No update or delete. Sales can read, not post. 260 tests           | PH1-18 (on-hand / available)       |
+| 2026-11-08 | Phase 1 (cont.) | PH1-18             | `balance` and `byWarehouse`: on-hand, reserved, available. Value is on-hand × latest unit cost, a placeholder until moving average. 263 tests                   | PH1-19 (reservation engine)        |
+| 2026-11-08 | Phase 1 (cont.) | PH1-19             | `reserve` / `release` / `allocate` in the caller's transaction. A hold cannot exceed available, and a thrown order keeps none of it. 269 tests                  | PH1-20 (manual adjustment)         |
+| 2026-11-08 | Phase 1 (cont.) | PH1-20             | `stock.adjust` (`inventory.approve`): reason fixes the sign, removal stops at the hold, optional note and image. 274 tests                                      | PH1-21 (stock transfer)            |
+| 2026-11-08 | Phase 1 (cont.) | PH1-21             | Transfers: draft, ship (transfer-out), partial receive (transfer-in), in-transit report. A short ship rolls back. `TR-` sequence. 278 tests                    | PH1-22 (goods receipt)             |
+| 2026-11-08 | Phase 1 (cont.) | PH1-22             | Manual `goodsReceipts`: required reference note, `GRN-` number, one ledger receipt per line. A bad line rolls the intake back. No PO. 282 tests                 | PH1-23 (inventory UI)              |
+| 2026-11-08 | Phase 1 (cont.) | PH1-23             | Inventory screens: stock list and detail, transfers, adjustments, and the manual receipt pages. Low stock means nothing available until reorder points. 283 tests | PH1-24 (reorder points)            |
+| 2026-11-08 | Phase 1 (cont.) | PH1-24             | Reorder points per product, with a warehouse override. Low stock is at or below the point. The daily job notifies inventory editors once per dip. 287 tests | PH1-25 (stock correctness suite)   |
+| 2026-11-08 | Phase 1 close   | PH1-25             | Ledger sums match on-hand through receive, transfer, reserve, issue, and adjust. Two reservations started together cannot oversell. 289 tests. Phase 1 gate closed | PH2-01 (customers)                 |

@@ -2,7 +2,8 @@ import { ConvexError, v } from "convex/values";
 import { imageAltError, normalizeImageAlt } from "../../lib/images";
 import { MAX_PRICE } from "../../lib/pricing";
 import { sanitizeRichText } from "../../lib/richText";
-import { validateSku } from "../../lib/sku";
+import { isPickerListed } from "../../lib/schemas/products";
+import { SKU_MAX_LENGTH, validateSku } from "../../lib/sku";
 import { trackingError } from "../../lib/tracking";
 import {
   normalizeUoMCode,
@@ -843,6 +844,173 @@ export const remove = auditedMutation({
   },
 });
 
+/* -------------------------------------------------------- duplicate (PH1-15) */
+
+/**
+ * Next free `<base>-COPY` / `<base>-COPY2` … SKU. The suffix is the
+ * distinguishing half, so a 32-char base loses characters from the front
+ * of the suffix, never the "-COPY" tail. Probes products AND variants —
+ * they share one namespace (PH1-09).
+ */
+async function allocateCopySku(ctx: MutationCtx, base: string): Promise<string> {
+  const normalized = validateSku(base).sku || base.trim().toUpperCase();
+  for (let n = 1; n < 1000; n += 1) {
+    const suffix = n === 1 ? "-COPY" : `-COPY${n}`;
+    let head = normalized.slice(0, Math.max(0, SKU_MAX_LENGTH - suffix.length));
+    head = head.replace(/[^A-Z0-9]+$/g, "");
+    if (head.length === 0) head = "X";
+    const candidate = `${head}${suffix}`;
+    if (validateSku(candidate).error !== null) continue;
+    const productHit = await ctx.db
+      .query("products")
+      .withIndex("by_sku", (q) => q.eq("sku", candidate))
+      .first();
+    if (productHit !== null) continue;
+    const variantHit = await ctx.db
+      .query("variants")
+      .withIndex("by_sku", (q) => q.eq("sku", candidate))
+      .first();
+    if (variantHit !== null) continue;
+    return candidate;
+  }
+  throw new ConvexError(`Couldn't derive a unique SKU from "${normalized}".`);
+}
+
+function copyName(name: string): string {
+  const suffix = " (copy)";
+  if (name.length + suffix.length <= MAX_NAME) return `${name}${suffix}`;
+  return `${name.slice(0, MAX_NAME - suffix.length).trimEnd()}${suffix}`;
+}
+
+/**
+ * Duplicate a product into a new DRAFT (PH1-15). Catalog identity is
+ * copied — fields, categories, attribute values, images (same file rows),
+ * variant axes and variant rows. Not copied, on purpose:
+ * - SKU and slug (they must be unique; the copy derives both)
+ * - barcode on the product and on each variant (a scan must resolve to
+ *   one thing)
+ * - serials and lots (those are physical units of the source)
+ * - status (always draft, even when the source is active or archived, so
+ *   a copy never publishes itself)
+ *
+ * One audit entry on the NEW product; `sourceId` names the original.
+ * `catalog.create` — a duplicate is a new catalog item, not an edit.
+ */
+export const duplicate = auditedMutation({
+  entity: "products",
+  action: "create",
+  args: { id: v.id("products") },
+  handler: async (ctx, args) => {
+    await requirePermission(ctx, "catalog", "create");
+    const source = await ctx.db.get(args.id);
+    if (source === null) {
+      throw new ConvexError("This product no longer exists.");
+    }
+
+    const name = copyName(source.name);
+    const sku = await allocateCopySku(ctx, source.sku);
+    const slug = await resolveUniqueSlug(
+      async (candidate) => {
+        const hit = await ctx.db
+          .query("products")
+          .withIndex("by_slug", (q) => q.eq("slug", candidate))
+          .first();
+        return hit !== null;
+      },
+      name,
+      undefined,
+      "product",
+    );
+
+    const now = Date.now();
+    const id = await ctx.db.insert("products", {
+      name,
+      slug,
+      sku,
+      brand: source.brand,
+      listPrice: source.listPrice,
+      costPrice: source.costPrice,
+      shortDescription: source.shortDescription,
+      longDescription: source.longDescription,
+      status: "draft",
+      taxCategory: source.taxCategory,
+      serialTracked: source.serialTracked,
+      lotTracked: source.lotTracked,
+      expiryRequired: source.expiryRequired,
+      warrantyEligible: source.warrantyEligible,
+      warrantyMonths: source.warrantyMonths,
+      shelfLifeDays: source.shelfLifeDays,
+      allowBackorder: source.allowBackorder,
+      unitOfMeasure: source.unitOfMeasure,
+      conversions: source.conversions,
+      purchaseUoM: source.purchaseUoM,
+      salesUoM: source.salesUoM,
+      images: source.images ?? [],
+      categoryIds: source.categoryIds,
+      attributeSetIds: source.attributeSetIds,
+      variantAxisIds: source.variantAxisIds,
+      seoTitle: source.seoTitle,
+      seoDescription: source.seoDescription,
+      createdAt: now,
+      updatedAt: now,
+    });
+    await syncProductCategoryRows(ctx, id);
+
+    const values = await ctx.db
+      .query("attributeValues")
+      .withIndex("by_product", (q) => q.eq("productId", source._id))
+      .collect();
+    for (const value of values) {
+      await ctx.db.insert("attributeValues", {
+        productId: id,
+        attributeId: value.attributeId,
+        valueText: value.valueText,
+        valueNumber: value.valueNumber,
+        valueBoolean: value.valueBoolean,
+        valueDate: value.valueDate,
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
+
+    const variants = await ctx.db
+      .query("variants")
+      .withIndex("by_product", (q) => q.eq("productId", source._id))
+      .collect();
+    for (const variant of variants) {
+      await ctx.db.insert("variants", {
+        productId: id,
+        optionValues: variant.optionValues,
+        sku: await allocateCopySku(ctx, variant.sku),
+        listPrice: variant.listPrice,
+        serialTracked: variant.serialTracked,
+        lotTracked: variant.lotTracked,
+        expiryRequired: variant.expiryRequired,
+        warrantyEligible: variant.warrantyEligible,
+        allowBackorder: variant.allowBackorder,
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
+
+    const copy = await ctx.db.get(id);
+    if (copy === null) {
+      throw new ConvexError("The copy could not be read back.");
+    }
+    return {
+      result: { id },
+      audit: {
+        entityId: id,
+        after: {
+          ...auditSnapshot(copy, values.length),
+          sourceId: source._id,
+          variantCount: variants.length,
+        },
+      },
+    };
+  },
+});
+
 /* ------------------------------------------------------------ list (PH1-08) */
 
 /** The flag columns the list can filter on (AND semantics: all selected must hold). */
@@ -883,6 +1051,9 @@ function compareText(a: string | undefined, b: string | undefined): number {
  *   key (bulk edits stamp identical `updatedAt` values).
  * - `limit` clamps to 1..200 (default 50) so a client can't pull the whole
  *   catalog in one response.
+ * - Archived products are omitted unless `status` is explicitly
+ *   `"archived"` (PH1-15). The catalog stays recoverable — the Archived
+ *   filter is the way back — and pickers never see them.
  */
 export const list = query({
   args: {
@@ -922,7 +1093,12 @@ export const list = query({
     const flags: FlagKey[] = args.flags ?? [];
     const sort: ListSort | undefined = args.sort;
     const rows = await ctx.db.query("products").collect();
-    const matches = rows.filter(
+    // PH1-15: archived stays out of the default catalog. Passing
+    // status: "archived" is the explicit reveal (and status: "active" /
+    // "draft" never includes it either, via the equality check below).
+    const pool =
+      args.status === undefined ? rows.filter((row) => isPickerListed(row.status)) : rows;
+    const matches = pool.filter(
       (row) =>
         (args.status === undefined || row.status === args.status) &&
         (args.brand === undefined || row.brand === args.brand) &&
@@ -971,9 +1147,42 @@ export const brands = query({
     const rows = await ctx.db.query("products").collect();
     const seen = new Set<string>();
     for (const row of rows) {
+      // Match the default list (PH1-15): an archived-only brand would
+      // otherwise filter the visible catalog down to nothing.
+      if (!isPickerListed(row.status)) continue;
       if (row.brand !== undefined && row.brand !== "") seen.add(row.brand);
     }
     return [...seen].sort((a, b) => compareText(a, b) || (a < b ? -1 : 1));
+  },
+});
+
+/**
+ * Staff product picker (PH1-15): id, name, and SKU for every non-archived
+ * product. Sales lines and other selectors call this — they must not offer
+ * an archived item. The storefront does NOT use this query: drafts are
+ * pickable here and must stay off the store (`isStorefrontListed`).
+ * Bounded like `list` (substring over name/SKU, cap 50).
+ */
+export const picker = query({
+  args: { search: v.optional(v.string()) },
+  handler: async (ctx, args) => {
+    await requirePermission(ctx, "catalog", "view");
+    const needle = (args.search ?? "").trim().toLowerCase();
+    const rows = await ctx.db.query("products").collect();
+    const matches = rows.filter(
+      (row) =>
+        isPickerListed(row.status) &&
+        (needle === "" ||
+          row.name.toLowerCase().includes(needle) ||
+          row.sku.toLowerCase().includes(needle)),
+    );
+    matches.sort((a, b) => compareText(a.name, b.name) || (a._id < b._id ? -1 : 1));
+    return matches.slice(0, 50).map((row) => ({
+      _id: row._id,
+      name: row.name,
+      sku: row.sku,
+      status: row.status,
+    }));
   },
 });
 

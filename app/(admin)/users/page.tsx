@@ -3,7 +3,7 @@
 import { Check } from "@untitledui/icons";
 import { useMutation, usePaginatedQuery, useQuery } from "convex/react";
 import { useState } from "react";
-import { Dialog, DialogTrigger, Modal, ModalOverlay } from "@/components/application/modals/modal";
+import { Dialog, Modal, ModalOverlay } from "@/components/application/modals/modal";
 import { Avatar } from "@/components/base/avatar/avatar";
 import { Badge } from "@/components/base/badges/badges";
 import { Button } from "@/components/base/buttons/button";
@@ -78,117 +78,110 @@ function InviteDialog({
   };
 
   return (
-    <DialogTrigger isOpen={isOpen} onOpenChange={setOpen}>
-      <ModalOverlay>
-        <Modal className="sm:max-w-md">
-          <Dialog className="flex max-h-[inherit] flex-col">
-            {sent ? (
-              <div className="space-y-4 p-6 text-center">
-                <FeaturedIcon color="success" size="xl" icon={Check} className="mx-auto" />
-                <div>
-                  <h2 className="text-display-xs text-primary font-semibold">Invitation sent</h2>
-                  <p className="text-secondary text-md mt-1.5">
-                    {sent.email} can now set a password from their invitation link.
-                  </p>
-                </div>
-                {sent.url ? (
-                  <div className="bg-secondary space-y-2 rounded-xl p-3 text-left">
-                    <p className="text-warning text-xs font-medium">
-                      No email service is configured — share this link directly:
-                    </p>
-                    <a
-                      href={sent.url}
-                      className="text-brand-600 text-xs font-medium break-all hover:underline"
-                    >
-                      {sent.url}
-                    </a>
-                  </div>
-                ) : null}
-                <Button
-                  color="secondary"
-                  size="lg"
-                  className="w-full"
-                  onPress={() => setOpen(false)}
-                >
-                  Done
-                </Button>
-              </div>
-            ) : (
-              <div className="p-6">
-                <h2 className="text-display-xs text-primary mb-1 font-semibold">Invite user</h2>
-                <p className="text-secondary text-md mb-5">
-                  They&apos;ll get an email with a link to set their password — valid for 7 days.
+    <ModalOverlay isOpen={isOpen} onOpenChange={setOpen}>
+      <Modal className="sm:max-w-md">
+        <Dialog className="flex max-h-[inherit] flex-col">
+          {sent ? (
+            <div className="space-y-4 p-6 text-center">
+              <FeaturedIcon color="success" size="xl" icon={Check} className="mx-auto" />
+              <div>
+                <h2 className="text-display-xs text-primary font-semibold">Invitation sent</h2>
+                <p className="text-secondary text-md mt-1.5">
+                  {sent.email} can now set a password from their invitation link.
                 </p>
-                <Form
-                  methods={methods}
-                  className="space-y-5"
-                  onSubmit={async (values) => {
-                    setServerError(null);
-                    try {
-                      const result = await inviteUser({
-                        email: values.email,
-                        name: values.name.trim() || undefined,
-                        // "" = no role yet (permission checks deny until an
-                        // Owner assigns one); role grants are Owner-only.
-                        role: values.role || undefined,
-                      });
-                      setSent({ email: values.email, url: result.url });
-                    } catch (error) {
-                      setServerError(toUserMessage(error));
-                    }
-                  }}
-                >
-                  {serverError ? <FormAlert message={serverError} /> : null}
-                  <FormInput
-                    name="email"
-                    label="Email"
-                    type="email"
-                    autoComplete="email"
-                    autoFocus
-                    required
-                  />
-                  <FormInput
-                    name="name"
-                    label="Full name"
-                    autoComplete="name"
-                    hint="Optional — they can confirm it when accepting"
-                  />
-                  {canPickRole ? (
-                    <FormSelect
-                      name="role"
-                      label="Role"
-                      placeholder="No role yet"
-                      hint="Grants their initial permissions — only an Owner can pick one"
-                      items={[
-                        { id: "", label: "No role yet" },
-                        ...(roles ?? []).map((role) => ({
-                          id: role.key,
-                          label: role.name,
-                          supportingText: role.description,
-                        })),
-                      ]}
-                    />
-                  ) : null}
-                  <FormActions>
-                    <Button color="secondary" size="lg" onPress={() => setOpen(false)}>
-                      Cancel
-                    </Button>
-                    <Button
-                      type="submit"
-                      color="primary"
-                      size="lg"
-                      isLoading={methods.formState.isSubmitting}
-                    >
-                      Send invitation
-                    </Button>
-                  </FormActions>
-                </Form>
               </div>
-            )}
-          </Dialog>
-        </Modal>
-      </ModalOverlay>
-    </DialogTrigger>
+              {sent.url ? (
+                <div className="bg-secondary space-y-2 rounded-xl p-3 text-left">
+                  <p className="text-warning text-xs font-medium">
+                    No email service is configured — share this link directly:
+                  </p>
+                  <a
+                    href={sent.url}
+                    className="text-brand-600 text-xs font-medium break-all hover:underline"
+                  >
+                    {sent.url}
+                  </a>
+                </div>
+              ) : null}
+              <Button color="secondary" size="lg" className="w-full" onPress={() => setOpen(false)}>
+                Done
+              </Button>
+            </div>
+          ) : (
+            <div className="p-6">
+              <h2 className="text-display-xs text-primary mb-1 font-semibold">Invite user</h2>
+              <p className="text-secondary text-md mb-5">
+                They&apos;ll get an email with a link to set their password — valid for 7 days.
+              </p>
+              <Form
+                methods={methods}
+                className="space-y-5"
+                onSubmit={async (values) => {
+                  setServerError(null);
+                  try {
+                    const result = await inviteUser({
+                      email: values.email,
+                      name: values.name.trim() || undefined,
+                      // "" = no role yet (permission checks deny until an
+                      // Owner assigns one); role grants are Owner-only.
+                      role: values.role || undefined,
+                    });
+                    setSent({ email: values.email, url: result.url });
+                  } catch (error) {
+                    setServerError(toUserMessage(error));
+                  }
+                }}
+              >
+                {serverError ? <FormAlert message={serverError} /> : null}
+                <FormInput
+                  name="email"
+                  label="Email"
+                  type="email"
+                  autoComplete="email"
+                  autoFocus
+                  required
+                />
+                <FormInput
+                  name="name"
+                  label="Full name"
+                  autoComplete="name"
+                  hint="Optional — they can confirm it when accepting"
+                />
+                {canPickRole ? (
+                  <FormSelect
+                    name="role"
+                    label="Role"
+                    placeholder="No role yet"
+                    hint="Grants their initial permissions — only an Owner can pick one"
+                    items={[
+                      { id: "", label: "No role yet" },
+                      ...(roles ?? []).map((role) => ({
+                        id: role.key,
+                        label: role.name,
+                        supportingText: role.description,
+                      })),
+                    ]}
+                  />
+                ) : null}
+                <FormActions>
+                  <Button type="button" color="secondary" size="lg" onPress={() => setOpen(false)}>
+                    Cancel
+                  </Button>
+                  <Button
+                    type="submit"
+                    color="primary"
+                    size="lg"
+                    isLoading={methods.formState.isSubmitting}
+                  >
+                    Send invitation
+                  </Button>
+                </FormActions>
+              </Form>
+            </div>
+          )}
+        </Dialog>
+      </Modal>
+    </ModalOverlay>
   );
 }
 

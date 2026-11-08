@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, SearchSm } from "@untitledui/icons";
+import { Check, Image01, SearchSm } from "@untitledui/icons";
 import { useMutation, useQuery } from "convex/react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -108,6 +108,20 @@ export default function ProductsPage() {
   });
   const bulkStatus = useMutation(api.catalog.products.bulkStatus);
 
+  // Cover thumbnails (PH1-13): index 0 is the cover. One batched URL
+  // lookup for the visible page — products with no images stay a placeholder.
+  const coverIds = useMemo(() => {
+    const ids: Id<"files">[] = [];
+    for (const row of result?.rows ?? []) {
+      const cover = row.images?.[0]?.fileId;
+      if (cover !== undefined) ids.push(cover);
+    }
+    return ids;
+  }, [result]);
+  const coverUrls = useQuery(api.files.urls, coverIds.length > 0 ? { fileIds: coverIds } : "skip");
+  const coverUrl = (fileId: Id<"files"> | undefined) =>
+    fileId === undefined ? null : (coverUrls?.find((row) => row.fileId === fileId)?.url ?? null);
+
   const categoryName = useMemo(() => {
     const map = new Map<string, string>();
     for (const row of categories ?? []) map.set(row._id, row.name);
@@ -164,17 +178,39 @@ export default function ProductsPage() {
       id: "name",
       header: "Product",
       sortable: true,
-      cell: (row) => (
-        <div className="min-w-0">
-          <Link
-            href={`/catalog/products/${row._id}`}
-            className="text-primary block truncate text-sm font-medium hover:underline"
-          >
-            {row.name}
-          </Link>
-          <span className="text-tertiary block truncate font-mono text-xs">{row.slug}</span>
-        </div>
-      ),
+      cell: (row) => {
+        const imageCount = row.images?.length ?? 0;
+        const url = coverUrl(row.images?.[0]?.fileId);
+        return (
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="bg-secondary ring-secondary relative size-10 shrink-0 overflow-hidden rounded-lg ring-1">
+              {url ? (
+                // Cover delivery URL. The product name next to it is the accessible name.
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={url} alt="" className="size-full object-cover" />
+              ) : (
+                <div className="flex size-full items-center justify-center">
+                  <Image01 className="text-fg-tertiary size-4" aria-hidden="true" />
+                </div>
+              )}
+              {imageCount > 1 ? (
+                <span className="bg-primary/90 text-secondary absolute right-0.5 bottom-0.5 rounded px-1 text-[10px] leading-4 font-medium">
+                  +{imageCount - 1}
+                </span>
+              ) : null}
+            </div>
+            <div className="min-w-0">
+              <Link
+                href={`/catalog/products/${row._id}`}
+                className="text-primary block truncate text-sm font-medium hover:underline"
+              >
+                {row.name}
+              </Link>
+              <span className="text-tertiary block truncate font-mono text-xs">{row.slug}</span>
+            </div>
+          </div>
+        );
+      },
     },
     {
       id: "sku",
@@ -323,9 +359,9 @@ export default function ProductsPage() {
         <Select
           aria-label="Filter by status"
           size="sm"
-          placeholder="All statuses"
+          placeholder="Active and draft"
           items={[
-            { id: "", label: "All statuses" },
+            { id: "", label: "Active and draft" },
             ...(["active", "draft", "archived"] as StatusKey[]).map((key) => ({
               id: key,
               label: STATUS[key].label,
@@ -390,7 +426,7 @@ export default function ProductsPage() {
     <div className="space-y-6">
       <PageHeader
         title="Products"
-        description="Every product in the catalog — filter, search, sort, and change statuses in bulk."
+        description="Active and draft products. Archived items stay out of pickers until you filter by Archived."
         actions={newProductButton}
       />
       <DataTable

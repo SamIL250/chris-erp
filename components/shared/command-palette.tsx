@@ -3,7 +3,7 @@
 import { ArrowRight, SearchSm } from "@untitledui/icons";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState, type FC } from "react";
-import { Dialog, DialogTrigger, Modal, ModalOverlay } from "@/components/application/modals/modal";
+import { Dialog, Modal, ModalOverlay } from "@/components/application/modals/modal";
 import type {
   NavItemDividerType,
   NavItemType,
@@ -113,120 +113,120 @@ export function CommandPalette({
   }, [isOpen, onOpenChange]);
 
   return (
-    <DialogTrigger isOpen={isOpen} onOpenChange={setOpen}>
-      <ModalOverlay className="items-start [--modal-pt:10vh] sm:items-start">
-        <Modal className="sm:max-w-xl">
-          <Dialog className="flex max-h-[inherit] flex-col">
-            {/* Query input */}
-            <div className="border-secondary flex items-center gap-3 border-b px-4">
-              <SearchSm className="text-tertiary size-5 shrink-0" />
-              <input
-                autoFocus
-                value={query}
-                onChange={(e) => {
-                  setQuery(e.target.value);
-                  setActiveIndex(0);
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === "ArrowDown") {
-                    e.preventDefault();
-                    setActiveIndex((i) => (flat.length === 0 ? 0 : (i + 1) % flat.length));
-                  } else if (e.key === "ArrowUp") {
-                    e.preventDefault();
-                    setActiveIndex((i) =>
-                      flat.length === 0 ? 0 : (i - 1 + flat.length) % flat.length,
-                    );
-                  } else if (e.key === "Enter") {
-                    if (flat[active]) go(flat[active]);
-                  }
-                }}
-                placeholder="Search pages, customers, documents…"
-                aria-label="Search"
-                className="text-primary placeholder:text-tertiary text-md h-12 w-full min-w-0 flex-1 bg-transparent outline-hidden"
-              />
-              <kbd className="ring-secondary text-quaternary rounded px-1.5 py-0.5 text-xs font-medium ring-1 ring-inset">
-                Esc
-              </kbd>
-            </div>
+    <ModalOverlay
+      isOpen={isOpen}
+      onOpenChange={setOpen}
+      className="items-start [--modal-pt:10vh] sm:items-start"
+    >
+      <Modal className="sm:max-w-xl">
+        <Dialog className="flex max-h-[inherit] flex-col">
+          {/* Query input */}
+          <div className="border-secondary flex items-center gap-3 border-b px-4">
+            <SearchSm className="text-tertiary size-5 shrink-0" />
+            <input
+              autoFocus
+              value={query}
+              onChange={(e) => {
+                setQuery(e.target.value);
+                setActiveIndex(0);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "ArrowDown") {
+                  e.preventDefault();
+                  setActiveIndex((i) => (flat.length === 0 ? 0 : (i + 1) % flat.length));
+                } else if (e.key === "ArrowUp") {
+                  e.preventDefault();
+                  setActiveIndex((i) =>
+                    flat.length === 0 ? 0 : (i - 1 + flat.length) % flat.length,
+                  );
+                } else if (e.key === "Enter") {
+                  if (flat[active]) go(flat[active]);
+                }
+              }}
+              placeholder="Search pages, customers, documents…"
+              aria-label="Search"
+              className="text-primary placeholder:text-tertiary text-md h-12 w-full min-w-0 flex-1 bg-transparent outline-hidden"
+            />
+            <kbd className="ring-secondary text-quaternary rounded px-1.5 py-0.5 text-xs font-medium ring-1 ring-inset">
+              Esc
+            </kbd>
+          </div>
 
-            {/* Results */}
-            <div className="max-h-[50vh] min-h-24 overflow-y-auto p-2">
-              {groups.map((group) => (
-                <div key={group.id} className="mb-2 last:mb-0">
-                  <p className="text-quaternary px-3 pt-2 pb-1.5 text-xs font-medium">
-                    {group.label}
-                  </p>
-                  {group.hits === undefined
-                    ? [0, 1, 2].map((i) => (
-                        <Skeleton key={i} className="mx-3 my-1 h-10 rounded-lg" />
-                      ))
-                    : group.hits.map((hit) => {
-                        const index = flat.indexOf(hit);
-                        const isActive = index === active;
-                        return (
-                          <button
-                            key={hit.id}
-                            type="button"
-                            onMouseEnter={() => setActiveIndex(index)}
-                            onClick={() => go(hit)}
-                            className={cx(
-                              "outline-focus-ring flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left focus-visible:outline-2",
-                              isActive && "bg-secondary",
-                            )}
-                          >
-                            {hit.icon ? (
-                              <hit.icon
-                                className={cx(
-                                  "size-5 shrink-0",
-                                  isActive ? "text-primary" : "text-secondary",
-                                )}
-                              />
-                            ) : null}
-                            <span className="min-w-0 flex-1">
-                              <span className="text-primary block truncate text-sm font-medium">
-                                {hit.title}
-                              </span>
-                              {hit.subtitle ? (
-                                <span className="text-tertiary block truncate text-xs">
-                                  {hit.subtitle}
-                                </span>
-                              ) : null}
-                            </span>
-                            <ArrowRight
+          {/* Results */}
+          <div className="max-h-[50vh] min-h-24 overflow-y-auto p-2">
+            {groups.map((group) => (
+              <div key={group.id} className="mb-2 last:mb-0">
+                <p className="text-quaternary px-3 pt-2 pb-1.5 text-xs font-medium">
+                  {group.label}
+                </p>
+                {group.hits === undefined
+                  ? [0, 1, 2].map((i) => <Skeleton key={i} className="mx-3 my-1 h-10 rounded-lg" />)
+                  : group.hits.map((hit) => {
+                      const index = flat.indexOf(hit);
+                      const isActive = index === active;
+                      return (
+                        <button
+                          key={hit.id}
+                          type="button"
+                          onMouseEnter={() => setActiveIndex(index)}
+                          onClick={() => go(hit)}
+                          className={cx(
+                            "outline-focus-ring flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left focus-visible:outline-2",
+                            isActive && "bg-secondary",
+                          )}
+                        >
+                          {hit.icon ? (
+                            <hit.icon
                               className={cx(
-                                "size-4 shrink-0",
-                                isActive ? "text-secondary" : "text-quaternary opacity-0",
+                                "size-5 shrink-0",
+                                isActive ? "text-primary" : "text-secondary",
                               )}
                             />
-                          </button>
-                        );
-                      })}
-                </div>
-              ))}
+                          ) : null}
+                          <span className="min-w-0 flex-1">
+                            <span className="text-primary block truncate text-sm font-medium">
+                              {hit.title}
+                            </span>
+                            {hit.subtitle ? (
+                              <span className="text-tertiary block truncate text-xs">
+                                {hit.subtitle}
+                              </span>
+                            ) : null}
+                          </span>
+                          <ArrowRight
+                            className={cx(
+                              "size-4 shrink-0",
+                              isActive ? "text-secondary" : "text-quaternary opacity-0",
+                            )}
+                          />
+                        </button>
+                      );
+                    })}
+              </div>
+            ))}
 
-              {flat.length === 0 && !anyLoading ? (
-                <div className="px-3 py-8 text-center">
-                  <p className="text-secondary text-sm">No results for “{query}”</p>
-                  <p className="text-quaternary mt-1 text-xs">
-                    Try a module name — more sources arrive with later phases.
-                  </p>
-                </div>
-              ) : null}
-            </div>
+            {flat.length === 0 && !anyLoading ? (
+              <div className="px-3 py-8 text-center">
+                <p className="text-secondary text-sm">No results for “{query}”</p>
+                <p className="text-quaternary mt-1 text-xs">
+                  Try a module name — more sources arrive with later phases.
+                </p>
+              </div>
+            ) : null}
+          </div>
 
-            {/* Keyboard hints */}
-            <div className="border-secondary text-quaternary flex items-center justify-between border-t px-4 py-2.5 text-xs">
-              <span>↑↓ to navigate · ↵ to open</span>
-              <span className="flex items-center gap-1.5">
-                <kbd className="ring-secondary rounded px-1.5 py-0.5 font-medium ring-1 ring-inset">
-                  ⌘K
-                </kbd>
-                to toggle
-              </span>
-            </div>
-          </Dialog>
-        </Modal>
-      </ModalOverlay>
-    </DialogTrigger>
+          {/* Keyboard hints */}
+          <div className="border-secondary text-quaternary flex items-center justify-between border-t px-4 py-2.5 text-xs">
+            <span>↑↓ to navigate · ↵ to open</span>
+            <span className="flex items-center gap-1.5">
+              <kbd className="ring-secondary rounded px-1.5 py-0.5 font-medium ring-1 ring-inset">
+                ⌘K
+              </kbd>
+              to toggle
+            </span>
+          </div>
+        </Dialog>
+      </Modal>
+    </ModalOverlay>
   );
 }

@@ -14,15 +14,10 @@ import { Button } from "@/components/base/buttons/button";
 import { Dropdown } from "@/components/base/dropdown/dropdown";
 import { CommandPalette } from "@/components/shared/command-palette";
 import { findActiveUrl } from "@/components/shared/nav-config";
+import { PageCrumb, PageLabelProvider } from "@/components/shared/page-label";
 import { NotificationBell } from "@/components/shared/notification-bell";
 import { useNavItems } from "@/hooks/use-can";
-import {
-  Drawer,
-  DrawerBody,
-  DrawerDialog,
-  DrawerOverlay,
-  DrawerPanel,
-} from "@/components/ui/drawer";
+import { DrawerBody, DrawerDialog, DrawerOverlay, DrawerPanel } from "@/components/ui/drawer";
 import { Skeleton } from "@/components/ui/skeleton";
 import { api } from "@/convex/_generated/api";
 import { cx } from "@/utils/cx";
@@ -210,50 +205,57 @@ export function AdminShell({ children }: { children: ReactNode }) {
           </div>
         </header>
 
-        <main className="flex-1 p-4 sm:p-6">{children}</main>
+        <PageLabelProvider>
+          <main className="flex-1 p-4 sm:p-6">
+            <PageCrumb />
+            {children}
+          </main>
+        </PageLabelProvider>
       </div>
 
       {/* Global search palette (⌘K) */}
       <CommandPalette isOpen={searchOpen} onOpenChange={setSearchOpen} />
 
       {/* Mobile navigation drawer */}
-      <Drawer isOpen={mobileNavOpen} onOpenChange={setMobileNavOpen}>
-        <DrawerOverlay className="justify-start">
-          <DrawerPanel className="w-72 max-w-[85vw]">
-            <DrawerDialog title="Navigation">
-              <DrawerBody
-                className="flex flex-col gap-4 px-0 py-0"
-                // Any click inside (including links) closes the drawer.
-                onClick={() => setMobileNavOpen(false)}
-              >
-                <NavList items={navItems} activeUrl={activeUrl} />
-                <div className="border-secondary border-t px-4 pt-4 pb-6">
-                  {me ? (
-                    <div className="mb-3">
-                      <AvatarLabelGroup
-                        size="sm"
-                        src={me.image ?? undefined}
-                        title={me.name ?? me.email ?? "User"}
-                        subtitle={me.email ?? ""}
-                        initials={(me.name ?? me.email ?? "?").slice(0, 1).toUpperCase()}
-                      />
-                    </div>
-                  ) : null}
-                  <Button
-                    color="secondary"
-                    size="sm"
-                    iconLeading={LogOut01}
-                    className="w-full"
-                    onPress={handleSignOut}
-                  >
-                    Sign out
-                  </Button>
-                </div>
-              </DrawerBody>
-            </DrawerDialog>
-          </DrawerPanel>
-        </DrawerOverlay>
-      </Drawer>
+      <DrawerOverlay
+        isOpen={mobileNavOpen}
+        onOpenChange={setMobileNavOpen}
+        className="justify-start"
+      >
+        <DrawerPanel className="w-72 max-w-[85vw]">
+          <DrawerDialog title="Navigation">
+            <DrawerBody
+              className="flex flex-col gap-4 px-0 py-0"
+              // Any click inside (including links) closes the drawer.
+              onClick={() => setMobileNavOpen(false)}
+            >
+              <NavList items={navItems} activeUrl={activeUrl} />
+              <div className="border-secondary border-t px-4 pt-4 pb-6">
+                {me ? (
+                  <div className="mb-3">
+                    <AvatarLabelGroup
+                      size="sm"
+                      src={me.image ?? undefined}
+                      title={me.name ?? me.email ?? "User"}
+                      subtitle={me.email ?? ""}
+                      initials={(me.name ?? me.email ?? "?").slice(0, 1).toUpperCase()}
+                    />
+                  </div>
+                ) : null}
+                <Button
+                  color="secondary"
+                  size="sm"
+                  iconLeading={LogOut01}
+                  className="w-full"
+                  onPress={handleSignOut}
+                >
+                  Sign out
+                </Button>
+              </div>
+            </DrawerBody>
+          </DrawerDialog>
+        </DrawerPanel>
+      </DrawerOverlay>
     </div>
   );
 }

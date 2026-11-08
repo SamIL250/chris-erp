@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery } from "convex/react";
 import { useState } from "react";
-import { Dialog, DialogTrigger, Modal, ModalOverlay } from "@/components/application/modals/modal";
+import { Dialog, Modal, ModalOverlay } from "@/components/application/modals/modal";
 import { Badge } from "@/components/base/badges/badges";
 import { Button } from "@/components/base/buttons/button";
 import { Select } from "@/components/base/select/select";
@@ -67,65 +67,71 @@ function AddCurrencyDialog({
   });
 
   return (
-    <DialogTrigger isOpen={isOpen} onOpenChange={onOpenChange}>
-      <ModalOverlay>
-        <Modal className="sm:max-w-md">
-          <Dialog className="flex max-h-[inherit] flex-col">
-            <Form
-              methods={methods}
-              onSubmit={async (values) => {
-                setServerError(null);
-                try {
-                  await create({
-                    code: values.code,
-                    name: values.name,
-                    symbol: values.symbol || undefined,
-                    decimalPlaces: values.decimalPlaces,
-                    active: values.active,
-                  });
-                  toast.success(`Currency ${values.code.toUpperCase()} added`);
-                  onOpenChange(false);
-                } catch (error) {
-                  setServerError(toUserMessage(error));
-                }
-              }}
-            >
-              <div className="space-y-5 p-6">
-                <div>
-                  <h2 className="text-display-xs text-primary font-semibold">Add currency</h2>
-                  <p className="text-secondary text-md mt-1.5">
-                    Codes must be unique — {currencies.length} already in the catalog.
-                  </p>
-                </div>
-                {serverError ? <FormAlert message={serverError} /> : null}
-                <div className="grid gap-5 sm:grid-cols-2">
-                  <FormInput name="code" label="Code" placeholder="EUR" required />
-                  <FormInput name="name" label="Name" placeholder="Euro" required />
-                  <FormInput name="symbol" label="Symbol" placeholder="€" />
-                  <FormSelect
-                    name="decimalPlaces"
-                    label="Decimal places"
-                    items={DECIMAL_ITEMS}
-                    hint="Minor units — USD 2, JPY 0"
-                  />
-                </div>
-                <FormCheckbox name="active" label="Active — available for documents" />
-                <FormActions>
-                  <Button
-                    type="submit"
-                    color="primary"
-                    size="lg"
-                    isLoading={methods.formState.isSubmitting}
-                  >
-                    Add currency
-                  </Button>
-                </FormActions>
+    <ModalOverlay isOpen={isOpen} onOpenChange={onOpenChange}>
+      <Modal className="sm:max-w-md">
+        <Dialog className="flex max-h-[inherit] flex-col">
+          <Form
+            methods={methods}
+            onSubmit={async (values) => {
+              setServerError(null);
+              try {
+                await create({
+                  code: values.code,
+                  name: values.name,
+                  symbol: values.symbol || undefined,
+                  decimalPlaces: values.decimalPlaces,
+                  active: values.active,
+                });
+                toast.success(`Currency ${values.code.toUpperCase()} added`);
+                onOpenChange(false);
+              } catch (error) {
+                setServerError(toUserMessage(error));
+              }
+            }}
+          >
+            <div className="space-y-5 p-6">
+              <div>
+                <h2 className="text-display-xs text-primary font-semibold">Add currency</h2>
+                <p className="text-secondary text-md mt-1.5">
+                  Codes must be unique — {currencies.length} already in the catalog.
+                </p>
               </div>
-            </Form>
-          </Dialog>
-        </Modal>
-      </ModalOverlay>
-    </DialogTrigger>
+              {serverError ? <FormAlert message={serverError} /> : null}
+              <div className="grid gap-5 sm:grid-cols-2">
+                <FormInput name="code" label="Code" placeholder="EUR" required />
+                <FormInput name="name" label="Name" placeholder="Euro" required />
+                <FormInput name="symbol" label="Symbol" placeholder="€" />
+                <FormSelect
+                  name="decimalPlaces"
+                  label="Decimal places"
+                  items={DECIMAL_ITEMS}
+                  hint="Minor units — USD 2, JPY 0"
+                />
+              </div>
+              <FormCheckbox name="active" label="Active — available for documents" />
+              <FormActions>
+                <Button
+                  type="button"
+                  color="secondary"
+                  size="lg"
+                  onPress={() => onOpenChange(false)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  color="primary"
+                  size="lg"
+                  isLoading={methods.formState.isSubmitting}
+                >
+                  Add currency
+                </Button>
+              </FormActions>
+            </div>
+          </Form>
+        </Dialog>
+      </Modal>
+    </ModalOverlay>
   );
 }
 
@@ -149,73 +155,79 @@ function AddRateDialog({
   }));
 
   return (
-    <DialogTrigger isOpen={isOpen} onOpenChange={onOpenChange}>
-      <ModalOverlay>
-        <Modal className="sm:max-w-md">
-          <Dialog className="flex max-h-[inherit] flex-col">
-            <Form
-              methods={methods}
-              onSubmit={async (values) => {
-                setServerError(null);
-                try {
-                  await addRate({
-                    baseCurrency: values.baseCurrency,
-                    quoteCurrency: values.quoteCurrency,
-                    rate: values.rate,
-                  });
-                  toast.success("Exchange rate recorded");
-                  onOpenChange(false);
-                } catch (error) {
-                  setServerError(toUserMessage(error));
-                }
-              }}
-            >
-              <div className="space-y-5 p-6">
-                <div>
-                  <h2 className="text-display-xs text-primary font-semibold">Add rate</h2>
-                  <p className="text-secondary text-md mt-1.5">
-                    Records a new observation — history is never rewritten.
-                  </p>
-                </div>
-                {serverError ? <FormAlert message={serverError} /> : null}
-                <FormSelect
-                  name="baseCurrency"
-                  label="From (base)"
-                  items={items}
-                  placeholder="Choose a currency"
-                  required
-                />
-                <FormSelect
-                  name="quoteCurrency"
-                  label="To (quote)"
-                  items={items}
-                  placeholder="Choose a currency"
-                  required
-                />
-                <FormInput
-                  name="rate"
-                  label="Rate"
-                  type="number"
-                  placeholder="1.0845"
-                  hint="1 base = this many quote units"
-                  required
-                />
-                <FormActions>
-                  <Button
-                    type="submit"
-                    color="primary"
-                    size="lg"
-                    isLoading={methods.formState.isSubmitting}
-                  >
-                    Record rate
-                  </Button>
-                </FormActions>
+    <ModalOverlay isOpen={isOpen} onOpenChange={onOpenChange}>
+      <Modal className="sm:max-w-md">
+        <Dialog className="flex max-h-[inherit] flex-col">
+          <Form
+            methods={methods}
+            onSubmit={async (values) => {
+              setServerError(null);
+              try {
+                await addRate({
+                  baseCurrency: values.baseCurrency,
+                  quoteCurrency: values.quoteCurrency,
+                  rate: values.rate,
+                });
+                toast.success("Exchange rate recorded");
+                onOpenChange(false);
+              } catch (error) {
+                setServerError(toUserMessage(error));
+              }
+            }}
+          >
+            <div className="space-y-5 p-6">
+              <div>
+                <h2 className="text-display-xs text-primary font-semibold">Add rate</h2>
+                <p className="text-secondary text-md mt-1.5">
+                  Records a new observation — history is never rewritten.
+                </p>
               </div>
-            </Form>
-          </Dialog>
-        </Modal>
-      </ModalOverlay>
-    </DialogTrigger>
+              {serverError ? <FormAlert message={serverError} /> : null}
+              <FormSelect
+                name="baseCurrency"
+                label="From (base)"
+                items={items}
+                placeholder="Choose a currency"
+                required
+              />
+              <FormSelect
+                name="quoteCurrency"
+                label="To (quote)"
+                items={items}
+                placeholder="Choose a currency"
+                required
+              />
+              <FormInput
+                name="rate"
+                label="Rate"
+                type="number"
+                placeholder="1.0845"
+                hint="1 base = this many quote units"
+                required
+              />
+              <FormActions>
+                <Button
+                  type="button"
+                  color="secondary"
+                  size="lg"
+                  onPress={() => onOpenChange(false)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  color="primary"
+                  size="lg"
+                  isLoading={methods.formState.isSubmitting}
+                >
+                  Record rate
+                </Button>
+              </FormActions>
+            </div>
+          </Form>
+        </Dialog>
+      </Modal>
+    </ModalOverlay>
   );
 }
 

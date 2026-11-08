@@ -214,13 +214,17 @@ describe("products:list (PH1-08)", () => {
     expect(await ids({ status: "draft" })).toEqual([lot]);
     expect(await ids({ brand: "AlphaCo" })).toEqual([serial, lot].sort());
     expect(await ids({ brand: "GammaCo" })).toEqual([]);
+    // PH1-15: archived is hidden until the status filter asks for it.
+    expect(await ids({})).toEqual([serial, lot].sort());
+    expect(await ids({ status: "archived" })).toEqual([plain]);
     // Category membership reads `categoryIds` (source of truth), not the join.
-    expect(await ids({ categoryId: imaging })).toEqual([serial, plain].sort());
+    expect(await ids({ categoryId: imaging })).toEqual([serial]);
+    expect(await ids({ categoryId: imaging, status: "archived" })).toEqual([plain]);
     // Flags AND together: nobody is BOTH serial- and lot-tracked here.
     expect(await ids({ flags: ["serialTracked"] })).toEqual([serial]);
     expect(await ids({ flags: ["warrantyEligible"] })).toEqual([serial]);
     expect(await ids({ flags: ["serialTracked", "lotTracked"] })).toEqual([]);
-    expect(await ids({ flags: [] })).toHaveLength(3);
+    expect(await ids({ flags: [] })).toHaveLength(2);
   });
 
   test("filters intersect; column sort asc/desc with stable ties", async () => {
@@ -284,6 +288,7 @@ describe("products:list (PH1-08)", () => {
     await insertProduct(t, { name: "Three", sku: "BR-3", brand: "alpha co" });
     await insertProduct(t, { name: "Four", sku: "BR-4", brand: "" });
     await insertProduct(t, { name: "Five", sku: "BR-5" }); // legacy row: no brand
+    await insertProduct(t, { name: "Six", sku: "BR-6", brand: "Gone Co", status: "archived" });
 
     await expect(t.query(api.catalog.products.brands, {})).rejects.toThrow("Not authenticated");
     expect(await as.query(api.catalog.products.brands, {})).toEqual(["alpha co", "Zeta Labs"]);
