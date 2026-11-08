@@ -1,4 +1,5 @@
 import { ConvexError, v } from "convex/values";
+import { imageAltError, normalizeImageAlt } from "../../lib/images";
 import { MAX_PRICE } from "../../lib/pricing";
 import { sanitizeRichText } from "../../lib/richText";
 import { validateSku } from "../../lib/sku";
@@ -105,6 +106,9 @@ type NormalizedValue = {
   valueDate?: number;
 };
 
+/** One attached image (PH1-13): cover = index 0; alt ≤ 255, absent = decorative. */
+type ImageRef = { fileId: Id<"files">; alt?: string };
+
 /** The product fields create and update share (update adds `id`). */
 type ProductArgs = {
   name: string;
@@ -129,7 +133,7 @@ type ProductArgs = {
   conversions?: Conversion[];
   purchaseUoM?: string;
   salesUoM?: string;
-  images: Id<"files">[];
+  images: ImageRef[];
   categoryIds: Id<"categories">[];
   attributeSetIds: Id<"attributeSets">[];
   seoTitle?: string;
@@ -266,17 +270,27 @@ async function requireSets(
   return unique;
 }
 
-async function requireImages(
-  ctx: QueryCtx | MutationCtx,
-  ids: Id<"files">[],
-): Promise<Id<"files">[]> {
-  const unique = dedupe(ids);
-  for (const id of unique) {
-    if ((await ctx.db.get(id)) === null) {
+/**
+ * Validate the attached image list (PH1-13): every file row must exist,
+ * duplicate attachments collapse (first occurrence wins — cover-first order
+ * is meaningful), alt text is trimmed ("" → absent, > 255 → verbatim
+ * `lib/images` message, shared with the editor's build gate).
+ */
+async function requireImages(ctx: QueryCtx | MutationCtx, images: ImageRef[]): Promise<ImageRef[]> {
+  const seen = new Set<string>();
+  const out: ImageRef[] = [];
+  for (const image of images) {
+    if (seen.has(image.fileId)) continue;
+    seen.add(image.fileId);
+    if ((await ctx.db.get(image.fileId)) === null) {
       throw new ConvexError("One of those images no longer exists.");
     }
+    const altError = imageAltError(image.alt);
+    if (altError !== null) throw new ConvexError(altError);
+    const alt = normalizeImageAlt(image.alt);
+    out.push(alt === undefined ? { fileId: image.fileId } : { fileId: image.fileId, alt });
   }
-  return unique;
+  return out;
 }
 
 /**
@@ -496,6 +510,10 @@ function auditSnapshot(
     conversions: source.conversions ?? [],
     purchaseUoM: source.purchaseUoM,
     salesUoM: source.salesUoM,
+    // Media joins the snapshot (PH1-13): cover order + alt text are
+    // customer-facing merchandising content — a reorder or alt edit must
+    // be visible in the audit entry, not a silent write.
+    images: source.images ?? [],
     valueCount,
   };
 }
@@ -533,7 +551,7 @@ const PRODUCT_ARGS = {
   ),
   purchaseUoM: v.optional(v.string()),
   salesUoM: v.optional(v.string()),
-  images: v.array(v.id("files")),
+  images: v.array(v.object({ fileId: v.id("files"), alt: v.optional(v.string()) })),
   categoryIds: v.array(v.id("categories")),
   attributeSetIds: v.array(v.id("attributeSets")),
   seoTitle: v.optional(v.string()),
@@ -664,6 +682,11 @@ export const update = auditedMutation({
     // produce an audit entry (PH0-30 autosave pattern).
     const conversionKeys = (rows: Conversion[]) =>
       rows.map((row) => `${row.unit}=${row.factor}x${row.parent}`).sort();
+    // Images diff as an ORDERED key list (PH1-13): order IS the display
+    // order (cover first), so a reorder or alt edit is a real change —
+    // while re-saving the same list byte-for-byte stays a no-op.
+    const imageKeys = (rows: ImageRef[]) =>
+      rows.map((image) => `${image.fileId}|${image.alt ?? ""}`);
     const changed =
       product.name !== row.name ||
       product.slug !== row.slug ||
@@ -689,7 +712,7 @@ export const update = auditedMutation({
       !sameList(conversionKeys(product.conversions ?? []), conversionKeys(row.conversions ?? [])) ||
       product.seoTitle !== row.seoTitle ||
       product.seoDescription !== row.seoDescription ||
-      !sameList(product.images, row.images ?? []) ||
+      !sameList(imageKeys(product.images), imageKeys(row.images ?? [])) ||
       !sameList(product.categoryIds, row.categoryIds) ||
       !sameList(product.attributeSetIds, row.attributeSetIds ?? []);
 

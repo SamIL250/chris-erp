@@ -9,6 +9,7 @@
  */
 
 import type * as _lib_audit from "../_lib/audit.js";
+import type * as _lib_fileUrl from "../_lib/fileUrl.js";
 import type * as _lib_invites from "../_lib/invites.js";
 import type * as _lib_notifications from "../_lib/notifications.js";
 import type * as _lib_permissions from "../_lib/permissions.js";
@@ -45,6 +46,7 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   "_lib/audit": typeof _lib_audit;
+  "_lib/fileUrl": typeof _lib_fileUrl;
   "_lib/invites": typeof _lib_invites;
   "_lib/notifications": typeof _lib_notifications;
   "_lib/permissions": typeof _lib_permissions;

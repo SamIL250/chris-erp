@@ -62,7 +62,7 @@ function fullArgs(over: Record<string, unknown> = {}) {
     expiryRequired: false,
     warrantyEligible: false,
     allowBackorder: false,
-    images: [] as Id<"files">[],
+    images: [] as { fileId: Id<"files">; alt?: string }[],
     categoryIds: [] as Id<"categories">[],
     attributeSetIds: [] as Id<"attributeSets">[],
     ...over,

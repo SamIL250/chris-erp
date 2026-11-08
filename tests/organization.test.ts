@@ -156,35 +156,45 @@ describe("organization:update (PH0-29)", () => {
       asOwner.mutation(api.organization.update, { ...form("X"), invoiceFooter: "x".repeat(2001) }),
     ).rejects.toThrow("under 2000");
 
-    // Logo: must exist and be kind "logo".
-    const wrongKind = await t.run((ctx) => ctx.storage.store(new Blob(["x"])));
-    const wrongKindFile = await asOwner.mutation(api.files.saveFile, {
-      storageId: wrongKind,
-      name: "a.png",
-      mimeType: "image/png",
-      size: 1,
-      kind: "avatar",
-    });
+    // Logo: must exist and be kind "logo" (rows registered like any upload).
+    const wrongKindFile = await t.run((ctx) =>
+      ctx.db.insert("files", {
+        cloudinaryPublicId: "products/wrongkind",
+        url: "https://res.cloudinary.com/testcloud/image/upload/products/wrongkind.png",
+        name: "a.png",
+        mimeType: "image/png",
+        size: 1,
+        kind: "avatar",
+        uploadedBy: owner,
+        createdAt: Date.now(),
+      }),
+    );
     await expect(
-      asOwner.mutation(api.organization.update, { ...form("X"), logoFileId: wrongKindFile.fileId }),
+      asOwner.mutation(api.organization.update, { ...form("X"), logoFileId: wrongKindFile }),
     ).rejects.toThrow("as a logo");
 
-    const storageId = await t.run((ctx) => ctx.storage.store(new Blob(["logo"])));
-    const logoFile = await asOwner.mutation(api.files.saveFile, {
-      storageId,
-      name: "logo.png",
-      mimeType: "image/png",
-      size: 4,
-      kind: "logo",
-    });
+    const logoFileId = await t.run((ctx) =>
+      ctx.db.insert("files", {
+        cloudinaryPublicId: "products/logo",
+        url: "https://res.cloudinary.com/testcloud/image/upload/products/logo.png",
+        name: "logo.png",
+        mimeType: "image/png",
+        size: 4,
+        kind: "logo",
+        uploadedBy: owner,
+        createdAt: Date.now(),
+      }),
+    );
     await asOwner.mutation(api.organization.update, {
       ...form("X"),
-      logoFileId: logoFile.fileId,
+      logoFileId,
     });
 
     const org = await asOwner.query(api.organization.get, {});
-    expect(org?.logoFileId).toBe(logoFile.fileId);
-    expect(org?.logoUrl).toBe(logoFile.url);
+    expect(org?.logoFileId).toBe(logoFileId);
+    expect(org?.logoUrl).toBe(
+      "https://res.cloudinary.com/testcloud/image/upload/products/logo.png",
+    );
 
     expect(await t.run((ctx) => ctx.db.query("organizations").collect())).toHaveLength(1);
   });

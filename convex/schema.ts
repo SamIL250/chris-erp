@@ -250,13 +250,21 @@ export default defineSchema({
     .index("by_user_time", ["userId", "createdAt"]),
 
   /**
-   * Uploaded-file registry (PH0-24 → PH0-27): bytes live in Convex storage
-   * (`storageId`), this row carries metadata + ownership; signed URLs are
-   * minted on read. `kind` buckets usage ("logo", "productImage",
-   * "avatar", …); `entityId` links to the owning document when applicable.
+   * Uploaded-file registry (PH0-24 → PH0-27): the row carries metadata +
+   * ownership; PH1-13 moved the BYTES to Cloudinary (signed direct upload),
+   * so a row holds EITHER a `cloudinaryPublicId` + permanent `url` (current)
+   * OR a legacy Convex-storage `storageId` (pre-PH1-13 rows keep reading;
+   * their signed URLs are re-minted on read). `kind` buckets usage ("logo",
+   * "productImage", "avatar", …); `entityId` links to the owning document
+   * when applicable.
    */
   files: defineTable({
-    storageId: v.id("_storage"),
+    /** Legacy Convex-storage rows only — absent on Cloudinary rows. */
+    storageId: v.optional(v.id("_storage")),
+    /** PH1-13: Cloudinary asset id — the delete/transform handle. */
+    cloudinaryPublicId: v.optional(v.string()),
+    /** PH1-13: permanent delivery URL (Cloudinary URLs don't expire). */
+    url: v.optional(v.string()),
     name: v.string(), // original filename
     mimeType: v.string(),
     size: v.number(), // bytes
@@ -316,8 +324,7 @@ export default defineSchema({
    * it keep reading — writers always set them (PH1-07's editor); readers
    * treat absent as `false` / `[]` / unset (e.g. `serialTracked === true`).
    *
-   * Field → later task: images[] → PH1-13
-   * (storage/reorder/alt live in the media flow), attributeSetIds[] →
+   * Field → later task: attributeSetIds[] →
    * product-level sets beyond the category-inherited ones (PH1-07 merges
    * them with `attributes.forCategory`), longDescription → rich HTML,
    * sanitized at write, taxCategory → the PH0-24 `taxGroups.rates` keys
@@ -399,8 +406,13 @@ export default defineSchema({
      */
     purchaseUoM: v.optional(v.string()),
     salesUoM: v.optional(v.string()),
-    /** Cover-first image list (PH1-13: upload, reorder, alt text). */
-    images: v.optional(v.array(v.id("files"))),
+    /**
+     * Cover-first image list (PH1-13): array order IS the display order —
+     * index 0 is the cover. Alt text rides the ATTACHMENT (`{ fileId, alt }`)
+     * so the same bytes can be described where they're used; empty alt =
+     * decorative (stored absent, ≤ 255 chars via `lib/images`).
+     */
+    images: v.optional(v.array(v.object({ fileId: v.id("files"), alt: v.optional(v.string()) }))),
     categoryIds: v.array(v.id("categories")),
     /** Product-level attribute sets (extra beyond category-inherited). */
     attributeSetIds: v.optional(v.array(v.id("attributeSets"))),

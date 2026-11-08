@@ -185,7 +185,7 @@ function fullArgs(over: Record<string, unknown> = {}) {
     expiryRequired: false,
     warrantyEligible: false,
     allowBackorder: false,
-    images: [] as Id<"files">[],
+    images: [] as { fileId: Id<"files">; alt?: string }[],
     categoryIds: [] as Id<"categories">[],
     attributeSetIds: [] as Id<"attributeSets">[],
     ...over,
@@ -234,7 +234,8 @@ describe("products:create (PH1-07)", () => {
         warrantyEligible: true,
         warrantyMonths: 24,
         unitOfMeasure: " each ",
-        images: [fileId],
+        // Alt rides the attachment (PH1-13) — trimmed at write.
+        images: [{ fileId, alt: "  Handheld scanner on a table  " }],
         categoryIds: [fixture.imaging],
         attributeSetIds: [fixture.extra],
         seoTitle: "X5 scanner",
@@ -257,7 +258,7 @@ describe("products:create (PH1-07)", () => {
       serialTracked: true,
       warrantyMonths: 24,
       unitOfMeasure: "each",
-      images: [fileId],
+      images: [{ fileId, alt: "Handheld scanner on a table" }],
       categoryIds: [fixture.imaging],
       attributeSetIds: [fixture.extra],
       seoTitle: "X5 scanner",
@@ -351,7 +352,10 @@ describe("products:create (PH1-07)", () => {
       as.mutation(api.catalog.products.create, fullArgs({ attributeSetIds: [fixture.deadSet] })),
     ).rejects.toThrow("One of those attribute sets no longer exists.");
     await expect(
-      as.mutation(api.catalog.products.create, fullArgs({ images: [fixture.deadFile] })),
+      as.mutation(
+        api.catalog.products.create,
+        fullArgs({ images: [{ fileId: fixture.deadFile }] }),
+      ),
     ).rejects.toThrow("One of those images no longer exists.");
 
     // A valid duplicate category list dedupes instead of erroring.

@@ -1,26 +1,20 @@
 "use client";
 
 import { Image01 } from "@untitledui/icons";
-import { useMutation } from "convex/react";
 import { useRef, useState } from "react";
-import { api } from "@/convex/_generated/api";
-import type { Id } from "@/convex/_generated/dataModel";
 import { toUserMessage } from "@/lib/errors";
 import { Button } from "@/components/base/buttons/button";
+import { useCloudinaryUpload, type UploadedImage } from "@/components/ui/use-cloudinary-upload";
 import { cx } from "@/utils/cx";
 
-/** What the caller receives when an image uploads successfully. */
-export interface UploadedImage {
-  fileId: Id<"files">;
-  url: string;
-}
+export type { UploadedImage };
 
 const DEFAULT_MAX_BYTES = 5 * 1024 * 1024; // 5 MB
 const formatMb = (bytes: number) => `${Math.round(bytes / (1024 * 1024))} MB`;
 
 /**
- * Image picker with drag-and-drop (PH0-27): validates client-side, uploads
- * via Convex storage (upload URL → POST → `files.saveFile`), and reports the
+ * Image picker with drag-and-drop (PH0-27 → PH1-13): validates client-side,
+ * uploads to Cloudinary through `useCloudinaryUpload`, and reports the
  * saved file through `onChange`. The caller owns the file's lifecycle — when
  * an image is replaced or cleared, `onChange` fires with the new value and
  * the caller decides what to do with the previous one (attach, detach, or
@@ -44,15 +38,14 @@ export function ImageUpload({
   kind: string;
   accept?: string;
   maxBytes?: number;
-  /** Current signed URL (re-query as they expire) — shows the preview. */
+  /** Current delivery URL (re-query on load) — shows the preview. */
   previewUrl?: string | null;
   onChange?: (image: UploadedImage | null) => void;
   disabled?: boolean;
   className?: string;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
-  const generateUploadUrl = useMutation(api.files.generateUploadUrl);
-  const saveFile = useMutation(api.files.saveFile);
+  const upload = useCloudinaryUpload();
   const [url, setUrl] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -72,21 +65,7 @@ export function ImageUpload({
     }
     setBusy(true);
     try {
-      const uploadUrl = await generateUploadUrl();
-      const res = await fetch(uploadUrl, {
-        method: "POST",
-        headers: { "Content-Type": file.type },
-        body: file,
-      });
-      if (!res.ok) throw new Error("The upload didn't complete.");
-      const { storageId } = (await res.json()) as { storageId: Id<"_storage"> };
-      const saved = await saveFile({
-        storageId,
-        name: file.name,
-        mimeType: file.type,
-        size: file.size,
-        kind,
-      });
+      const saved = await upload(file, kind);
       setUrl(saved.url);
       onChange?.({ fileId: saved.fileId, url: saved.url });
     } catch (err) {
@@ -120,7 +99,7 @@ export function ImageUpload({
       >
         <div className="bg-secondary ring-secondary flex size-16 shrink-0 items-center justify-center overflow-hidden rounded-lg ring-1">
           {shownUrl ? (
-            // Signed URLs are produced by Convex storage for files the user picked.
+            // Cloudinary delivery URL (permanent) or legacy Convex-storage signed URL.
             // eslint-disable-next-line @next/next/no-img-element
             <img
               src={shownUrl}

@@ -1,6 +1,7 @@
 "use client";
 
-import { useMutation } from "convex/react";
+import { Image01 } from "@untitledui/icons";
+import { useMutation, useQuery } from "convex/react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Badge } from "@/components/base/badges/badges";
@@ -8,6 +9,7 @@ import { Button } from "@/components/base/buttons/button";
 import { Checkbox } from "@/components/base/checkbox/checkbox";
 import { Input } from "@/components/base/input/input";
 import { Select } from "@/components/base/select/select";
+import { MediaGallery, type GalleryImage } from "@/components/catalog/media-gallery";
 import { RichTextEditor } from "@/components/catalog/rich-text-editor";
 import { Card } from "@/components/ui/card";
 import {
@@ -24,6 +26,7 @@ import { api } from "@/convex/_generated/api";
 import type { Doc, Id } from "@/convex/_generated/dataModel";
 import { orderApplicableAttributes } from "@/lib/attributes";
 import { toUserMessage } from "@/lib/errors";
+import { imageAltError } from "@/lib/images";
 import { marginPercent } from "@/lib/pricing";
 import { ATTRIBUTE_TYPE_LABELS } from "@/lib/schemas/attributes";
 import {
@@ -150,6 +153,7 @@ export function ProductForm({
   const createMutation = useMutation(api.catalog.products.create);
   const updateMutation = useMutation(api.catalog.products.update);
   const removeMutation = useMutation(api.catalog.products.remove);
+  const removeFile = useMutation(api.files.remove);
 
   const methods = useZodForm(productSchema, { defaultValues: productDefaults(product) });
 
@@ -160,7 +164,10 @@ export function ProductForm({
   const [attributeSetIds, setAttributeSetIds] = useState<string[]>(() => [
     ...(product?.attributeSetIds ?? []),
   ]);
-  const [images] = useState<Id<"files">[]>(() => [...(product?.images ?? [])]);
+  const [images, setImages] = useState<GalleryImage[]>(() => [...(product?.images ?? [])]);
+  // Files removed in the editor (PH1-13): deleted only AFTER a save
+  // excludes them — a failed or in-flight save may still reference them.
+  const [removedFileIds, setRemovedFileIds] = useState<Id<"files">[]>([]);
   const [valuesMap, setValuesMap] = useState<ValueMap>(() => seedValues(storedValues, definitions));
 
   // Pack conversions (PH1-11) are string-row state (factor parsed at build
@@ -269,6 +276,14 @@ export function ProductForm({
     const sales = validateDocUoM("Sales UoM", values.salesUoM, base, conversionsResult.rows);
     if (sales.error !== null) return { invalid: sales.error };
 
+    // Images (PH1-13): alt rules run through the SAME lib/images call the
+    // mutation makes, so a too-long description blocks the save with the
+    // exact server message (quiet-gate pattern like the UoM checks above).
+    for (const image of images) {
+      const altError = imageAltError(image.alt);
+      if (altError !== null) return { invalid: altError };
+    }
+
     return {
       args: {
         name: values.name,
@@ -328,6 +343,15 @@ export function ProductForm({
       }
       setServerError(null);
       setSaveState("saved");
+      // Detached images (PH1-13): once a save EXCLUDES them they're
+      // unreferenced — delete the rows (+ Cloudinary assets), best-effort.
+      // A file this save still carried stays queued for the next one.
+      const savedIds = new Set(built.args.images.map((image) => image.fileId));
+      const doomed = removedFileIds.filter((fileId) => !savedIds.has(fileId));
+      if (doomed.length > 0) {
+        setRemovedFileIds((prev) => prev.filter((fileId) => !savedIds.has(fileId)));
+        for (const fileId of doomed) void removeFile({ fileId }).catch(() => {});
+      }
     } catch (error) {
       setServerError(toUserMessage(error));
       setSaveState("error");
@@ -394,6 +418,21 @@ export function ProductForm({
 
   const removeConversion = (index: number) => {
     setConversions((current) => current.filter((_, i) => i !== index));
+    markDirty();
+  };
+
+  /* ----------------------------------------------------------- images */
+
+  const changeImages = (next: GalleryImage[]) => {
+    setImages(next);
+    markDirty();
+  };
+
+  const removeImage = (fileId: Id<"files">) => {
+    setImages((current) => current.filter((image) => image.fileId !== fileId));
+    // Deferred delete (see state note): the row + asset go only after a
+    // save that excludes the file — never while one may still reference it.
+    setRemovedFileIds((current) => (current.includes(fileId) ? current : [...current, fileId]));
     markDirty();
   };
 
@@ -897,12 +936,7 @@ export function ProductForm({
 
         {/* -------------------------------------------------------- Media */}
         <Section title="Media" description="Images customers see — cover first.">
-          <p className="text-secondary text-sm">
-            {images.length > 0
-              ? `${images.length} image${images.length === 1 ? "" : "s"} attached.`
-              : "No images yet."}{" "}
-            Upload, reorder, alt text, and cover selection arrive with PH1-13.
-          </p>
+          <MediaGallery images={images} onChange={changeImages} onRemove={removeImage} />
         </Section>
 
         {/* ---------------------------------------------------------- SEO */}
@@ -1049,6 +1083,14 @@ export function ProductFacts({
 
   const margin = marginPercent(product.listPrice, product.costPrice);
 
+  // Media (PH1-13): view-only roles see the cover-first gallery too —
+  // one batched URL query, alt text is the image's accessible description.
+  const imageIds = useMemo(
+    () => (product.images ?? []).map((image) => image.fileId),
+    [product.images],
+  );
+  const imageUrlRows = useQuery(api.files.urls, { fileIds: imageIds });
+
   const facts: { label: string; value: React.ReactNode }[] = [
     { label: "SKU", value: <span className="font-mono text-xs">{product.sku}</span> },
     { label: "Slug", value: <span className="font-mono text-xs">/{product.slug}</span> },
@@ -1129,6 +1171,42 @@ export function ProductFacts({
           </Badge>
         }
       />
+      {product.images && product.images.length > 0 ? (
+        <Card>
+          <div className="border-tertiary border-b px-6 py-4">
+            <h2 className="text-primary text-base font-semibold">Media</h2>
+            <p className="text-tertiary text-sm">Cover first — alt text describes each image.</p>
+          </div>
+          <ul className="grid grid-cols-2 gap-4 p-6 sm:grid-cols-3">
+            {product.images.map((image, index) => {
+              const url = imageUrlRows?.find((row) => row.fileId === image.fileId)?.url ?? null;
+              return (
+                <li
+                  key={image.fileId}
+                  className="bg-primary ring-secondary overflow-hidden rounded-xl ring-1"
+                >
+                  <div className="bg-secondary relative aspect-square w-full overflow-hidden">
+                    {url ? (
+                      // Cloudinary delivery URL for the attached file.
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={url} alt={image.alt ?? ""} className="size-full object-cover" />
+                    ) : (
+                      <div className="flex size-full items-center justify-center">
+                        <Image01 className="text-fg-tertiary size-8" />
+                      </div>
+                    )}
+                    {index === 0 ? (
+                      <span className="bg-primary ring-tertiary text-secondary absolute top-2 left-2 rounded-full px-2 py-0.5 text-xs font-medium shadow-xs ring-1">
+                        Cover
+                      </span>
+                    ) : null}
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        </Card>
+      ) : null}
       <Card>
         <dl className="space-y-3 p-6">
           {facts.map((fact) => (

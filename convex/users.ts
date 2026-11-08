@@ -2,6 +2,7 @@ import { getAuthUserId } from "@convex-dev/auth/server";
 import { paginationOptsValidator } from "convex/server";
 import { ConvexError, v } from "convex/values";
 import { auditedMutation } from "./_lib/audit";
+import { resolveFileUrl } from "./_lib/fileUrl";
 import { notify } from "./_lib/notifications";
 import {
   effectiveRoleKeys,
@@ -27,12 +28,13 @@ export const me = query({
     if (userId === null) return null;
     const user = await ctx.db.get(userId);
     if (user === null) return null;
-    // Uploaded photo (PH0-27) wins over the provider's image — signed URLs
-    // expire, so resolve fresh on every read instead of persisting one.
+    // Uploaded photo (PH0-27) wins over the provider's image — Cloudinary
+    // URLs are permanent, legacy Convex-storage ones expire, so resolve
+    // fresh on every read instead of persisting one.
     let image = user.image;
     if (user.avatarFileId !== undefined) {
       const file = await ctx.db.get(user.avatarFileId);
-      const url = file !== null ? await ctx.storage.getUrl(file.storageId) : null;
+      const url = file !== null ? await resolveFileUrl(ctx, file) : null;
       image = url ?? user.image;
     }
     const keys = await effectiveRoleKeys(ctx, userId);

@@ -73,7 +73,7 @@ describe("products schema (PH1-06)", () => {
         shelfLifeDays: 730,
         allowBackorder: false,
         unitOfMeasure: "each",
-        images: [fileId],
+        images: [{ fileId }],
         categoryIds: [catId],
         attributeSetIds: [setId],
         createdAt: 1,
@@ -98,7 +98,7 @@ describe("products schema (PH1-06)", () => {
       shelfLifeDays: 730,
       allowBackorder: false,
       unitOfMeasure: "each",
-      images: [ids.fileId],
+      images: [{ fileId: ids.fileId }],
       attributeSetIds: [ids.setId],
       categoryIds: [ids.catId],
     });

@@ -1,6 +1,7 @@
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { ConvexError, v } from "convex/values";
 import { auditedMutation } from "./_lib/audit";
+import { resolveFileUrl } from "./_lib/fileUrl";
 import { requirePermission } from "./_lib/permissions";
 import { query, type QueryCtx } from "./_generated/server";
 
@@ -47,7 +48,7 @@ export const get = query({
     let logoUrl: string | null = null;
     if (org.logoFileId !== undefined) {
       const file = await ctx.db.get(org.logoFileId);
-      logoUrl = file !== null ? await ctx.storage.getUrl(file.storageId) : null;
+      logoUrl = file !== null ? await resolveFileUrl(ctx, file) : null;
     }
     return { ...org, logoUrl };
   },
