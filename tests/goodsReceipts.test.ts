@@ -97,6 +97,17 @@ describe("goods receipts (PH1-22)", () => {
       referenceNote: "opening balance",
       lines: [{ productId, qty: 4, unitCost: 5 }],
     });
+    expect(await t.run((ctx) => ctx.db.query("journalIntents").collect())).toMatchObject([
+      {
+        type: "goodsReceipt",
+        sourceType: "goodsReceipt",
+        sourceId: receiptId,
+        status: "pending",
+        currency: "USD",
+        amount: 20,
+        lines: [{ productId, description: "IN-1", qty: 4, unitCost: 5, amount: 20 }],
+      },
+    ]);
     expect(await as.query(api.inventory.stock.balance, { productId, warehouseId })).toMatchObject({
       onHand: 4,
       available: 4,

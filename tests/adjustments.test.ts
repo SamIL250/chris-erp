@@ -136,6 +136,17 @@ describe("manual stock adjustment (PH1-20)", () => {
     expect(entry?.action).toBe("create");
     expect(entry?.before).toBeUndefined();
     expect(entry?.after).toMatchObject({ reason: "damage", qty: -2, note: "cracked case" });
+    expect(await t.run((ctx) => ctx.db.query("journalIntents").collect())).toMatchObject([
+      {
+        type: "stockAdjustment",
+        sourceType: "stockAdjustment",
+        sourceId: id,
+        status: "pending",
+        currency: "USD",
+        amount: 0,
+        lines: [{ description: "Counted item · Damage", qty: -2, amount: 0 }],
+      },
+    ]);
   });
 
   test("a removal cannot take units that are still reserved", async () => {

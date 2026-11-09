@@ -93,6 +93,26 @@ export function latestUnitCost(
   return cost;
 }
 
+/**
+ * Moving-average cost after a receipt (PH2-22). The purchase unit cost
+ * stays on the ledger line. This average is what a later valuation
+ * (PH3-06) will read. Stock already on hand keeps its current average;
+ * an empty bin takes the receipt's cost. Rounded to the cent.
+ */
+export function movingAverageCost(input: {
+  onHand: number;
+  average: number | undefined;
+  qty: number;
+  unitCost: number;
+}): number {
+  const incoming = input.qty > 0 ? input.qty : 0;
+  const priorQty = input.onHand > 0 ? input.onHand : 0;
+  const prior = input.average ?? input.unitCost;
+  const totalQty = priorQty + incoming;
+  if (!(totalQty > 0)) return Math.round(input.unitCost * 100) / 100;
+  return Math.round(((priorQty * prior + incoming * input.unitCost) / totalQty) * 100) / 100;
+}
+
 /** Placeholder value: on-hand × {@link latestUnitCost}, to the cent. */
 export function placeholderValue(onHand: number, unitCost: number | undefined): number | undefined {
   if (unitCost === undefined || !Number.isFinite(onHand)) return undefined;
@@ -108,6 +128,23 @@ export const ADJUSTMENT_NOTE_MAX = 500;
 
 export function isAdjustmentReason(value: string): value is AdjustmentReason {
   return (ADJUSTMENT_REASONS as readonly string[]).includes(value);
+}
+
+export function adjustmentReasonLabel(reason: AdjustmentReason): string {
+  switch (reason) {
+    case "damage":
+      return "Damage";
+    case "countCorrection":
+      return "Count correction";
+    case "writeOff":
+      return "Write-off";
+    case "found":
+      return "Found";
+    default: {
+      const unreachable: never = reason;
+      return unreachable;
+    }
+  }
 }
 
 /**

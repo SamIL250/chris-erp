@@ -106,7 +106,8 @@ describe("seed (PH0-34)", () => {
       organization: 1,
       currencies: 3,
       taxRates: 3,
-      sequences: 12,
+      customerGroups: 3,
+      sequences: 15,
       users: SYSTEM_ROLES.length,
       categories: 5,
       products: 8, // 7 equipment rows + Ultrasound Gel (PH1-12's lot bucket)
@@ -125,7 +126,7 @@ describe("seed (PH0-34)", () => {
     const orgs = await t.run((ctx) => ctx.db.query("organizations").collect());
     expect(orgs).toHaveLength(1);
     expect(orgs[0]).toMatchObject({ name: "Chris Trading Ltd", baseCurrency: "USD" });
-    expect(await t.run((ctx) => ctx.db.query("sequences").collect())).toHaveLength(12);
+    expect(await t.run((ctx) => ctx.db.query("sequences").collect())).toHaveLength(15);
 
     // PH1-12: the seed inserts directly (no mutation validation), so it
     // itself is what guarantees demo data ships valid — every row must
@@ -238,7 +239,8 @@ describe("seed (PH0-34)", () => {
     expect(result.created).toEqual({
       currencies: 2, // EUR + GBP only — USD already there
       taxRates: 2, // Reduced + Zero only
-      sequences: 12,
+      customerGroups: 3,
+      sequences: 15,
       users: 2, // admin + sales; owner is disabled, warehouse exists
       roleGrants: 1, // accountant only
       categories: 5, // demo tree — nothing pre-existed

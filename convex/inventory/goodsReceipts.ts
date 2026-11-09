@@ -12,6 +12,8 @@ import { ensureDefaultSequences, nextSequence } from "../_lib/sequences";
 import type { Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { query } from "../_generated/server";
+import { applyLastPurchasePrices } from "../catalog/productVendors";
+import { recordGoodsReceiptIntent } from "../finance/journalIntents";
 import { postMovement } from "./stock";
 
 /**
@@ -19,8 +21,12 @@ import { postMovement } from "./stock";
  *
  * `create` posts the document and one ledger receipt per line in the
  * same transaction. A line that fails rolls the whole intake back.
- * There is no draft and no purchase order — PH2-22 adds receiving
- * against a PO. A correction is a later adjustment, not an edit here.
+ * There is no draft. Receiving against a purchase order is
+ * `purchaseReceipts.receive`. An optional vendor (PH2-04) records who
+ * supplied the goods and, when a line has a unit cost, updates that
+ * product's last purchase price. Quantity that enters stock writes one
+ * pending goods-receipt journal intent. A correction is a later
+ * adjustment, not an edit here.
  */
 
 const LIST_CAP = 200;
@@ -70,14 +76,22 @@ async function linesOf(ctx: QueryCtx | MutationCtx, receiptId: Id<"goodsReceipts
     .collect();
 }
 
-async function snapshotOf(ctx: QueryCtx | MutationCtx, receiptId: Id<"goodsReceipts">) {
+export async function snapshotOf(ctx: QueryCtx | MutationCtx, receiptId: Id<"goodsReceipts">) {
   const receipt = await ctx.db.get(receiptId);
   if (receipt === null) throw new ConvexError("Receipt not found.");
   const lines = await linesOf(ctx, receiptId);
+  const vendor = receipt.vendorId === undefined ? null : await ctx.db.get(receipt.vendorId);
+  const purchaseOrder =
+    receipt.purchaseOrderId === undefined ? null : await ctx.db.get(receipt.purchaseOrderId);
   return {
     number: receipt.number,
     warehouseId: receipt.warehouseId,
     referenceNote: receipt.referenceNote,
+    vendorId: receipt.vendorId ?? null,
+    vendor:
+      vendor === null ? null : { code: vendor.code, name: vendor.name, active: vendor.active },
+    purchaseOrderId: purchaseOrder?._id ?? null,
+    purchaseOrderNumber: purchaseOrder?.docNumber ?? null,
     createdAt: receipt.createdAt,
     lines: lines.map((line) => ({
       lineId: line._id,
@@ -87,7 +101,11 @@ async function snapshotOf(ctx: QueryCtx | MutationCtx, receiptId: Id<"goodsRecei
       serialIds: line.serialIds,
       qty: line.qty,
       unitCost: line.unitCost,
-      movementId: line.movementId,
+      qtyAccepted: line.qtyAccepted ?? null,
+      qtyRejected: line.qtyRejected ?? null,
+      averageCost: line.averageCost ?? null,
+      purchaseOrderLineId: line.purchaseOrderLineId ?? null,
+      movementId: line.movementId ?? null,
     })),
   };
 }
@@ -98,17 +116,23 @@ export const create = auditedMutation({
   args: {
     warehouseId: v.id("warehouses"),
     referenceNote: v.string(),
+    vendorId: v.optional(v.id("vendors")),
     lines: v.array(v.object(LINE_FIELDS)),
   },
   handler: async (ctx, args) => {
     const actorId = await requirePermission(ctx, "inventory", "create");
     assertHeader(args.lines, args.referenceNote);
+    if (args.vendorId !== undefined) {
+      const vendor = await ctx.db.get(args.vendorId);
+      if (vendor === null) throw new ConvexError("Vendor not found.");
+    }
     await ensureDefaultSequences(ctx);
     const number = await nextSequence(ctx, "goodsReceipt");
     const receiptId = await ctx.db.insert("goodsReceipts", {
       number,
       warehouseId: args.warehouseId,
       referenceNote: normalizeReceiptNote(args.referenceNote),
+      ...(args.vendorId !== undefined ? { vendorId: args.vendorId } : {}),
       createdAt: Date.now(),
     });
 
@@ -137,6 +161,11 @@ export const create = auditedMutation({
         movementId,
       });
     }
+
+    if (args.vendorId !== undefined) {
+      await applyLastPurchasePrices(ctx, args.vendorId, args.lines);
+    }
+    await recordGoodsReceiptIntent(ctx, receiptId);
 
     return {
       result: receiptId,

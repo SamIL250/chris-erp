@@ -5,12 +5,14 @@ import { useState } from "react";
 import { Badge } from "@/components/base/badges/badges";
 import { Button } from "@/components/base/buttons/button";
 import { Input } from "@/components/base/input/input";
+import { ProductIdentity } from "@/components/catalog/product-cover";
 import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
 import { FormAlert } from "@/components/ui/form";
 import { PageHeader } from "@/components/ui/page-header";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "@/components/ui/toast";
 import { usePageLabel } from "@/components/shared/page-label";
+import { useProductCovers } from "@/hooks/use-product-covers";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { useCan } from "@/hooks/use-can";
@@ -24,14 +26,6 @@ const STATUS_COLOR = {
   cancelled: "gray",
 } as const;
 
-type Line = {
-  lineId: Id<"stockTransferLines">;
-  productId: Id<"products">;
-  qty: number;
-  receivedQty: number;
-  outstanding: number;
-};
-
 /** Ship a draft, receive part or all of an in-transit transfer, or cancel. */
 export function TransferDetail({ id }: { id: string }) {
   const transfer = useQuery(api.inventory.transfers.get, {
@@ -39,6 +33,7 @@ export function TransferDetail({ id }: { id: string }) {
   });
   const warehouses = useQuery(api.inventory.warehouses.list);
   const products = useQuery(api.catalog.products.picker, { search: "" });
+  const covers = useProductCovers((transfer?.lines ?? []).map((line) => line.productId));
   const ship = useMutation(api.inventory.transfers.ship);
   const receive = useMutation(api.inventory.transfers.receive);
   const cancel = useMutation(api.inventory.transfers.cancel);
@@ -90,11 +85,23 @@ export function TransferDetail({ id }: { id: string }) {
     void run(() => receive({ transferId: transferId(id), lines }), "Receipt posted");
   };
 
-  const columns: DataTableColumn<Line>[] = [
+  const lineRows = transfer.lines.map((row) => {
+    const product = products?.find((item) => item._id === row.productId);
+    return {
+      ...row,
+      coverSrc: covers.get(row.productId) ?? product?.coverUrl ?? null,
+      productName: product?.name ?? "Product",
+      productSku: product?.sku ?? row.productId,
+    };
+  });
+
+  const columns: DataTableColumn<(typeof lineRows)[number]>[] = [
     {
       id: "product",
       header: "Product",
-      cell: (row) => <span className="text-primary text-sm">{productOf(row.productId)}</span>,
+      cell: (row) => (
+        <ProductIdentity name={row.productName} meta={row.productSku} src={row.coverSrc} />
+      ),
     },
     {
       id: "qty",
@@ -143,7 +150,7 @@ export function TransferDetail({ id }: { id: string }) {
       <DataTable
         title="Lines"
         columns={columns}
-        rows={transfer.lines}
+        rows={lineRows}
         rowId={(row) => row.lineId}
         empty={{ title: "No lines", description: "This transfer has nothing to move." }}
       />

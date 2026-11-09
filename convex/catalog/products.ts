@@ -13,9 +13,11 @@ import {
   type Conversion,
 } from "../../lib/uom";
 import { appendAudit, auditedMutation } from "../_lib/audit";
+import { resolveFileUrl } from "../_lib/fileUrl";
 import { requirePermission } from "../_lib/permissions";
 import { resolveUniqueSlug } from "../_lib/slugs";
 import { syncProductCategoryRows } from "../_lib/productCategories";
+import { removePricesForProduct } from "../sales/prices";
 import { applicableAttributes } from "./attributes";
 import { query, type MutationCtx, type QueryCtx } from "../_generated/server";
 import type { Doc, Id } from "../_generated/dataModel";
@@ -811,10 +813,11 @@ export const remove = auditedMutation({
       throw new ConvexError("This product no longer exists.");
     }
     // The inverse of the PH1-06 category guard / PH1-04 set guard: clean the
-    // join rows (PH1-05), value rows (PH1-05 tables), and variant rows
-    // (PH1-09) so no ghost reference outlives the product. (Future referrers
-    // — stock, serials, work orders — block this delete instead; no such
-    // table exists yet.)
+    // join rows (PH1-05), value rows (PH1-05 tables), variant rows
+    // (PH1-09), vendor links (PH2-04), and stored prices (PH2-06) so no
+    // ghost reference outlives the product. (Future referrers — stock,
+    // serials, work orders — block this delete instead; no such table
+    // exists yet.)
     const values = await ctx.db
       .query("attributeValues")
       .withIndex("by_product", (q) => q.eq("productId", args.id))
@@ -829,6 +832,14 @@ export const remove = auditedMutation({
     for (const variant of variants) {
       await ctx.db.delete(variant._id);
     }
+    const vendorLinks = await ctx.db
+      .query("productVendors")
+      .withIndex("by_product", (q) => q.eq("productId", args.id))
+      .collect();
+    for (const link of vendorLinks) {
+      await ctx.db.delete(link._id);
+    }
+    await removePricesForProduct(ctx, args.id);
     const joins = await ctx.db
       .query("productCategories")
       .withIndex("by_product", (q) => q.eq("productId", args.id))
@@ -1177,12 +1188,49 @@ export const picker = query({
           row.sku.toLowerCase().includes(needle)),
     );
     matches.sort((a, b) => compareText(a.name, b.name) || (a._id < b._id ? -1 : 1));
-    return matches.slice(0, 50).map((row) => ({
-      _id: row._id,
-      name: row.name,
-      sku: row.sku,
-      status: row.status,
-    }));
+    return await Promise.all(
+      matches.slice(0, 50).map(async (row) => ({
+        _id: row._id,
+        name: row.name,
+        sku: row.sku,
+        status: row.status,
+        coverUrl: await coverUrlOf(ctx, row),
+      })),
+    );
+  },
+});
+
+/** Cover delivery URL, or null when the product has no image. */
+async function coverUrlOf(ctx: QueryCtx, product: Doc<"products"> | null): Promise<string | null> {
+  const fileId = product?.images?.[0]?.fileId;
+  if (fileId === undefined) return null;
+  const file = await ctx.db.get(fileId);
+  if (file === null) return null;
+  return await resolveFileUrl(ctx, file);
+}
+
+/**
+ * Cover URLs for product mentions outside the catalog list (quotes,
+ * orders, stock, prices, vendor links). `catalog.view`.
+ */
+export const covers = query({
+  args: { productIds: v.array(v.id("products")) },
+  handler: async (ctx, args) => {
+    await requirePermission(ctx, "catalog", "view");
+    const ids: Id<"products">[] = [];
+    const seen = new Set<string>();
+    for (const productId of args.productIds) {
+      if (seen.has(productId)) continue;
+      seen.add(productId);
+      ids.push(productId);
+      if (ids.length === 200) break;
+    }
+    return await Promise.all(
+      ids.map(async (productId) => ({
+        productId,
+        url: await coverUrlOf(ctx, await ctx.db.get(productId)),
+      })),
+    );
   },
 });
 

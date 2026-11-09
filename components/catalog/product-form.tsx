@@ -10,8 +10,11 @@ import { Checkbox } from "@/components/base/checkbox/checkbox";
 import { Input } from "@/components/base/input/input";
 import { Select } from "@/components/base/select/select";
 import { MediaGallery, type GalleryImage } from "@/components/catalog/media-gallery";
+import { ProductCover } from "@/components/catalog/product-cover";
+import { ProductVendors } from "@/components/catalog/product-vendors";
 import { RichTextEditor } from "@/components/catalog/rich-text-editor";
 import { usePageLabel } from "@/components/shared/page-label";
+import { useProductCovers } from "@/hooks/use-product-covers";
 import { Card } from "@/components/ui/card";
 import {
   Form,
@@ -163,6 +166,7 @@ export function ProductForm({
 
   const [createdId, setCreatedId] = useState<Id<"products"> | null>(null);
   const targetId = product?._id ?? createdId;
+  const covers = useProductCovers(targetId === null ? [] : [targetId]);
 
   const [categoryIds, setCategoryIds] = useState<string[]>(() => [...(product?.categoryIds ?? [])]);
   const [attributeSetIds, setAttributeSetIds] = useState<string[]>(() => [
@@ -508,6 +512,11 @@ export function ProductForm({
           product === null && createdId === null
             ? "New catalog item — fill in the basics and it saves as you go."
             : "Catalog item — changes save automatically as you type."
+        }
+        leading={
+          targetId === null ? undefined : (
+            <ProductCover src={covers.get(targetId)} className="size-16" />
+          )
         }
         actions={
           <div className="flex flex-wrap items-center gap-3">
@@ -1051,6 +1060,7 @@ export function ProductForm({
           </div>
         </Card>
       </Form>
+      {targetId !== null ? <ProductVendors productId={targetId} canEdit /> : null}
     </div>
   );
 }
@@ -1106,6 +1116,7 @@ export function ProductFacts({
   sets: Doc<"attributeSets">[];
   categories: CategoryRow[];
 }) {
+  const covers = useProductCovers([product._id]);
   const categoryName = new Map(categories.map((row) => [row._id as string, row.name]));
   const setNames = new Set(
     (product.attributeSetIds ?? []).map((id) => sets.find((s) => s._id === id)?.name ?? id),
@@ -1207,6 +1218,7 @@ export function ProductFacts({
       <PageHeader
         title={product.name}
         description="View only — an editor role can change this product."
+        leading={<ProductCover src={covers.get(product._id)} className="size-16" />}
         actions={
           <Badge color={product.status === "active" ? "brand" : "gray"} size="md">
             {PRODUCT_STATUS_LABELS[product.status]}
@@ -1278,6 +1290,7 @@ export function ProductFacts({
           </div>
         </Card>
       ) : null}
+      <ProductVendors productId={product._id} canEdit={false} />
     </div>
   );
 }

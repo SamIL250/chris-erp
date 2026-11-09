@@ -20,7 +20,9 @@ export default function NewReceiptPage() {
   const create = useMutation(api.inventory.goodsReceipts.create);
   const warehouses = useQuery(api.inventory.warehouses.list);
   const products = useQuery(api.catalog.products.picker, { search: "" });
+  const vendors = useQuery(api.procurement.vendors.list, { active: true });
   const [warehouseId, setWarehouseId] = useState("");
+  const [vendorId, setVendorId] = useState("");
   const [referenceNote, setReferenceNote] = useState("");
   const [lines, setLines] = useState<DraftLine[]>([emptyLine()]);
   const [error, setError] = useState<string | null>(null);
@@ -66,6 +68,7 @@ export default function NewReceiptPage() {
       const id = await create({
         warehouseId: warehouseId as Id<"warehouses">,
         referenceNote,
+        ...(vendorId === "" ? {} : { vendorId: vendorId as Id<"vendors"> }),
         lines: parsed,
       });
       toast.success("Receipt posted");
@@ -80,7 +83,7 @@ export default function NewReceiptPage() {
     <div className="mx-auto max-w-2xl space-y-6">
       <PageHeader
         title="New receipt"
-        description="Goods go on hand as soon as you post. The note is the delivery slip, the opening balance, or whatever explains the intake."
+        description="Goods go on hand as soon as you post. The note is the delivery slip, the opening balance, or whatever explains the intake. Naming a vendor updates that product's last purchase price when a line has a unit cost."
       />
       {error ? <FormAlert message={error} /> : null}
       <Select
@@ -90,6 +93,21 @@ export default function NewReceiptPage() {
         items={active.map((row) => ({ id: row._id as string, label: `${row.code} · ${row.name}` }))}
         value={warehouseId}
         onChange={(key) => setWarehouseId(key == null ? "" : String(key))}
+      >
+        {(item) => (
+          <Select.Item id={item.id} key={item.id}>
+            {item.label}
+          </Select.Item>
+        )}
+      </Select>
+      <Select
+        aria-label="Vendor"
+        label="Vendor"
+        placeholder="No vendor"
+        hint="Optional. Only an existing product link gets a new last purchase price."
+        items={(vendors ?? []).map((row) => ({ id: row._id, label: `${row.code} · ${row.name}` }))}
+        value={vendorId}
+        onChange={(key) => setVendorId(key == null ? "" : String(key))}
       >
         {(item) => (
           <Select.Item id={item.id} key={item.id}>

@@ -5,11 +5,13 @@ import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Badge } from "@/components/base/badges/badges";
 import { Select } from "@/components/base/select/select";
+import { ProductCover } from "@/components/catalog/product-cover";
 import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
 import { PageHeader } from "@/components/ui/page-header";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ReorderPoint } from "@/components/inventory/reorder-point";
 import { usePageLabel } from "@/components/shared/page-label";
+import { useProductCovers } from "@/hooks/use-product-covers";
 import { api } from "@/convex/_generated/api";
 import type { Doc, Id } from "@/convex/_generated/dataModel";
 import {
@@ -58,6 +60,7 @@ export function StockDetail({ productId }: { productId: string }) {
         );
 
   usePageLabel(product?.product?.name);
+  const covers = useProductCovers(productReady ? [productId] : []);
 
   const balance = useQuery(
     api.inventory.stock.balance,
@@ -129,14 +132,17 @@ export function StockDetail({ productId }: { productId: string }) {
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        title={product === undefined ? "Stock" : product.product.name}
-        description={
-          product === undefined
-            ? undefined
-            : `${product.product.sku} · on hand, what is reserved, and the ledger that produced them.`
-        }
-      />
+      <div className="flex items-start gap-4">
+        <ProductCover src={covers.get(productId)} className="size-16" />
+        <PageHeader
+          title={product === undefined ? "Stock" : product.product.name}
+          description={
+            product === undefined
+              ? undefined
+              : `${product.product.sku} · on hand, what is reserved, and the ledger that produced them.`
+          }
+        />
+      </div>
 
       <div className="w-64">
         <Select

@@ -2,8 +2,8 @@
 
 > **Companion to:** [`erp-research-and-features.md`](./erp-research-and-features.md) (research, decisions, feature priorities)
 > **Stack:** Next.js (App Router) · Convex · Untitled UI (components + icons) · Stripe · Resend · Tailwind v4
-> **Status:** Phase 1 ✅ complete — stock correctness suite (25 / 25, Catalog & Inventory)
-> **Last updated:** 2026-11-08
+> **Status:** Phase 2 🔨 in progress — integration tests (29 / 29, Sales & Procurement)
+> **Last updated:** 2026-11-09
 
 ---
 
@@ -36,7 +36,7 @@
 | -------------- | -------------------------------------------------- | -------------- | ------- | ---- |
 | **Phase 0**    | Foundation (scaffold, auth, RBAC, settings, shell) | ✅ Complete    | 35 / 35 | ☑    |
 | **Phase 1**    | Catalog + Inventory core (schema-first)            | ✅ Complete    | 25 / 25 | ☑    |
-| **Phase 2**    | Sales & Procurement (O2C + P2P documents)          | ⬜ Not started | 0 / 29  | ☐    |
+| **Phase 2**    | Sales & Procurement (O2C + P2P documents)          | 🔨 In progress | 29 / 29 | ☐    |
 | **Phase 3**    | Finance (double-entry, postings, reports)          | ⬜ Not started | 0 / 17  | ☐    |
 | **Phase 4**    | Ecommerce storefront (B2C + B2B portal)            | ⬜ Not started | 0 / 24  | ☐    |
 | **Phase 5**    | Traceability & Service (serial/lot/FEFO, warranty) | ⬜ Not started | 0 / 17  | ☐    |
@@ -218,47 +218,47 @@ chris-erp/
 
 ### 2.1 Business partners (master data)
 
-- [ ] **PH2-01** `customers`: company + contacts, addresses (bill/ship-to, default flags), payment terms, tax group, currency, credit limit, account status, notes timeline
-- [ ] **PH2-02** Customer groups/tiers (Retail, Wholesale, Institutional) with assigned customers
-- [ ] **PH2-03** `vendors`: contacts, addresses, terms, currency, tax/license fields (license number, jurisdiction, expiry — enforced Phase 5), active status
-- [ ] **PH2-04** Product↔Vendor links: preferred vendor, vendor SKU, last purchase price (auto-updated on receipt)
-- [ ] **PH2-05** Admin UIs for customers/vendors: list, detail (with related docs), create/edit, statement summary
+- [x] **PH2-01** `customers`: company + contacts, addresses (bill/ship-to, default flags), payment terms, tax group, currency, credit limit, account status, notes timeline — _shipped 2026-11-08: a customer is a company. The code is unique, uppercased, and limited to letters, digits, and dashes. Status is active, on hold, or closed; there is no hard delete. Terms are 0–365 days (0 is due on receipt). Tax group and credit limit can be cleared, and the currency must be an active catalog code. The first contact is primary, and removing the primary promotes the oldest remaining contact. Bill-to and ship-to defaults are independent. Notes are append-only. `customers.create` is `sales.create`; the header, contacts, addresses, and notes are `sales.edit` (warehouse can edit, an accountant can only read). `list` / `get` / `options` are `sales.view`. `/sales` opens the customer list. Groups are PH2-02. Vendor screens, related documents, and the statement summary stay PH2-05_
+- [x] **PH2-02** Customer groups/tiers (Retail, Wholesale, Institutional) with assigned customers — _shipped 2026-11-08: a company has one tier. The name is unique ignoring case. A group is deactivated, never deleted; companies already on it stay there, and a new assignment of an inactive tier is refused. `customerGroups.create` is `sales.create` (warehouse cannot open a tier). Rename and deactivate are `sales.edit`. `list` / `get` are `sales.view`, and `get` lists the assigned companies. Seed adds Retail, Wholesale, and Institutional when those names are missing. Prices for a tier wait for PH2-06_
+- [x] **PH2-03** `vendors`: contacts, addresses, terms, currency, tax/license fields (license number, jurisdiction, expiry — enforced Phase 5), active status — _shipped 2026-11-08: a vendor is a company we buy from. The code is unique, uppercased, and limited to letters, digits, and dashes. Active is a flag; there is no hard delete, and an inactive vendor stays on file. Terms are 0–365 days (0 is due on receipt). Tax group, tax number, and the license fields can be cleared, and the currency must be an active catalog code. License number, jurisdiction, and expiry are stored; a past expiry is allowed, and Phase 5 (PH5-12) is what refuses an expired license. The first contact is primary, and removing the primary promotes the oldest remaining contact. Remit-to and ship-from defaults are independent, and the first address is both. `vendors.create` is `procurement.create` (warehouse can open a vendor; accountant and sales cannot). The header, contacts, and addresses are `procurement.edit` (accountant can edit; warehouse cannot). `list` / `get` / `options` are `procurement.view` (sales can read). `/procurement` opens the vendor list. Product links are PH2-04. Related documents and the statement summary stay PH2-05_
+- [x] **PH2-04** Product↔Vendor links: preferred vendor, vendor SKU, last purchase price (auto-updated on receipt) — _shipped 2026-11-08: a product may name several vendors, and exactly one of those links is preferred. The first link is preferred. Removing the preferred one promotes the oldest remaining link. The vendor SKU is the supplier's code, optional, and kept in their casing. A new link to an inactive vendor is refused; one already on file may stay. Last purchase price is not typed. A goods receipt may name a vendor, and a line with a unit cost updates that product's existing link. A receipt does not create the link, and a line with no cost leaves the price alone. `productVendors.link` / `update` / `remove` are `catalog.edit` (sales can; warehouse and accountant cannot). `listForProduct` / `listForVendor` are `catalog.view`. The price write rides `goodsReceipts.create` (`inventory.create`). Deleting the product removes the links. Related documents and the statement stay PH2-05_
+- [x] **PH2-05** Admin UIs for customers/vendors: list, detail (with related docs), create/edit, statement summary — _shipped 2026-11-08: list, detail, and create/edit shipped with PH2-01 and PH2-03. This task adds the statement on each company. A customer balance is invoices less credits and payments. Those documents are not posted yet, so the balance is zero, available credit is the limit minus that balance, and a missing limit is no cap. The document list is empty until quotes, orders, deliveries, and invoices exist. A vendor statement lists goods receipts that name them, newest first. A line with no unit cost is listed and adds nothing. The received total is the sum of the costed lines. Bills are not included. `customers.statement` is `sales.view`. `vendors.statement` is `procurement.view`. Aging and payments stay PH3-08 and PH3-09_
 
 ### 2.2 Pricing engine
 
-- [ ] **PH2-06** `priceLists` (base list) + `customerGroupPrices` + `customerPrices` + `quantityBreaks` (min qty → price) + date-ranged promotions hook
-- [ ] **PH2-07** **`resolvePrice(customerId, productId|variantId, qty, date, currency)`** — one function, deterministic precedence: customer-specific → group → list; volume break applies last; rounding rules documented
-- [ ] **PH2-08** Price override on a document line: manual price/discount with reason; if beyond threshold → flags `needsApproval` (basic two-person confirm now; full rules engine Phase 6)
-- [ ] **PH2-09** Pricing UI: price list manager, per-customer price table, quantity-break editor; margin preview on sales lines
-- [ ] **PH2-10** Pricing test matrix (customer tiers × qty breaks × overrides) locked in CI
+- [x] **PH2-06** `priceLists` (base list) + `customerGroupPrices` + `customerPrices` + `quantityBreaks` (min qty → price) + date-ranged promotions hook — _shipped 2026-11-08: a price list holds product prices in one currency. The first list is the base, and naming another list the base clears the previous one. Unsetting the only base keeps it. Deactivating the base promotes the oldest other list; the only list stays the base when it is deactivated. A list is never deleted, and its currency cannot change once it has a price. A group price and a customer price are their own rows, one per product, variant, and currency. A new price on an inactive group or a closed customer is refused; a customer on hold can still be priced. A quantity break hangs off one of those prices, starts at a quantity of 2, and is removed with that price. A promotion stores a date window and may name the list in effect during it. Overlapping windows are both kept. Reads are `sales.view`. Every write, including a change or a removal, is `sales.create`, so warehouse cannot change a price. Deleting a product or a variant removes the prices that name it. Which row a sale uses is PH2-07. The manager screens are PH2-09_
+- [x] **PH2-07** **`resolvePrice(customerId, productId|variantId, qty, date, currency)`** — one function, deterministic precedence: customer-specific → group → list; volume break applies last; rounding rules documented — _shipped 2026-11-08: `prices.resolvePrice` is `sales.view`. A customer price wins, then the customer's group price, then a list price. Inside a tier, a variant price beats the product price, and a higher tier with only a product price still beats a lower tier's variant price. Zero is a win. The list tier uses an active promotion whose window covers the UTC day of the date and whose list is active in the requested currency. The one that started latest wins; a tie goes to the one created latest. If that list has no price for the product, the next promotion is tried, then the active base list. A quantity break applies only to the row that won, and only the break with the greatest minimum the quantity still reaches. The catalog list price is last, and only in the company base currency. A variant's list price beats the product's. No match is a null unit price. The unit is rounded with `Math.round` to the currency's decimal places (a half rounds away from zero). A line amount rounds again after multiplying that unit by the quantity. A closed customer and an inactive group still resolve. A missing customer, product, variant, or currency is an error. Manual overrides stay PH2-08_
+- [x] **PH2-08** Price override on a document line: manual price/discount with reason; if beyond threshold → flags `needsApproval` (basic two-person confirm now; full rules engine Phase 6) — _shipped 2026-11-08: a line may replace the resolved unit with a typed price, or take a percent off it. Both need a reason. The discount is how far the new unit sits below the resolved unit, after rounding, to two decimal places. Above 10% the row is `pending` and `needsApproval` stays set. A raise, or a discount at 10%, is applied immediately. A pending or rejected override still charges the resolved unit. A second person with `sales.approve` confirms it, and the person who asked cannot confirm their own. A rejection needs its own reason. There is one row per quote, order, invoice, or credit-note line; proposing again replaces it. The line tables arrive with the documents. Configurable approval rules stay PH6-01. The pricing screens stay PH2-09_
+- [x] **PH2-09** Pricing UI: price list manager, per-customer price table, quantity-break editor; margin preview on sales lines — _shipped 2026-11-08: `/sales/prices` lists the price lists and the promotions that pick one. A list page edits the header and its product prices. A company page and a group page hold their own prices. A quantity break hangs off the price it replaces, from a quantity of 2. The sales-line panel asks `prices.linePreview` for the same winner `resolvePrice` would charge, then the line total and the margin against the product's display cost. A missing cost, or a unit that is not above zero, leaves the margin blank. Writes stay `sales.create`. An inactive list or group, or a closed customer, shows its prices and refuses a new one. Quote and order lines reuse the preview once those documents exist_
+- [x] **PH2-10** Pricing test matrix (customer tiers × qty breaks × overrides) locked in CI — _shipped 2026-11-08: `tests/pricingMatrix.test.ts` walks a customer price, a group price, the base list, the catalog list price, and a product with no price, at quantities 1, 5, 7, and 10. A break applies only on the winning row: 5 and 7 take the break at 5, and 10 takes the break at 10. A promotion from last year that prices the product at 1 does not win. Each resolved unit is then crossed with no override, a 10% discount (applied at once), a 20% discount left pending, that discount approved, that discount rejected, and a typed raise. Pending and rejected keep charging the resolved unit. With no price, a percent off is refused and a typed price waits until a second person approves it. The sales-line preview matches `resolvePrice`, including the line total. An override does not change what `resolvePrice` returns. CI runs this file with the rest of the suite (`npm test`), so a cell that drifts fails the build. Quotes are PH2-11_
 
 ### 2.3 Sales documents (Order-to-Cash)
 
-- [ ] **PH2-11** `quotes`: lines, discounts, tax, validity date, notes, status (draft/sent/accepted/rejected/expired), PDF output, convert → SO (carry lines/prices)
-- [ ] **PH2-12** `salesOrders`: draft → confirmed (stock **checked + reserved**) → fulfilling → invoiced → closed/cancelled; line-level fulfillment; partial shipment support; backorder flag per line
-- [ ] **PH2-13** SO screen: header (customer, ship-to, terms, channel: manual/storefront), lines with live pricing + availability, actions bar (confirm, deliver, invoice, cancel), doc-flow breadcrumb
-- [ ] **PH2-14** `deliveries` (packing slips): pick list view (grouped by warehouse), pack confirmation, ship (date, carrier, tracking #) → **goods issue** posts `stockMovements` (issue) + captures unit cost → journal intent `cogs` created
-- [ ] **PH2-15** Delivery PDF (packing slip) + printable pick list
-- [ ] **PH2-16** `salesInvoices`: generate from SO/delivery (line pricing snapshot, tax breakdown), statuses (draft/posted/paid/void), number from sequence, PDF; posted → journal intent `salesInvoice`
-- [ ] **PH2-17** `creditNotes` for returns/adjustments: links to invoice, posts journal intent `creditNote`, restock decision
-- [ ] **PH2-18** `salesReturns`/RMA-lite: return request (from invoice/order, lines + qty + reason) → receive (inspect: restock / quarantine / write-off) → credit note or exchange
-- [ ] **PH2-19** Order desk dashboard: open orders, to-pick, to-ship, to-bill, returns pending (reactive tiles)
+- [x] **PH2-11** `quotes`: lines, discounts, tax, validity date, notes, status (draft/sent/accepted/rejected/expired), PDF output, convert → SO (carry lines/prices) — _shipped 2026-11-08: a quote is a draft for one customer (`QT-`). A line prices through `resolvePrice` in the customer's currency and snapshots tax. A discount of 10% or less applies at once; above 10% it waits for a second person and the line keeps charging the resolved price. Send needs a line. Send and accept refuse a lapsed quote or a discount that is still pending. Status runs draft to sent to accepted, and draft or sent can be rejected or expired. Accept converts once into a draft sales order (`SO-`) that copies the charged lines and prices. The PDF is built in the browser. A customer's statement lists the quote and does not change the balance. Writes are `sales.create`, so warehouse cannot change a quote. Confirming the order is PH2-12_
+- [x] **PH2-12** `salesOrders`: draft → confirmed (stock **checked + reserved**) → fulfilling → invoiced → closed/cancelled; line-level fulfillment; partial shipment support; backorder flag per line — _shipped 2026-11-08: confirming a draft reserves free stock at one warehouse (`sales.create`). A line that does not fit is flagged backorder and the order still confirms. `orders.reserve` (`sales.edit`) takes more when stock arrives. Shipping a reserved quantity allocates it — a release and an issue, with the latest unit cost on the issue — and the order moves to fulfilling. The rest of the line stays reserved, so a shipment can be partial. Invoice waits until every line has shipped, then the order can close. Cancel, until it is invoiced, releases whatever is still reserved; units that already left stay out. Warehouse can ship and top up a backorder, and cannot confirm, invoice, close, or cancel. The order page has those actions. The desk, with live pricing and the document trail, is PH2-13. A delivery note, carrier, and the COGS intent are PH2-14, and that ship must not issue these units again_
+- [x] **PH2-13** SO screen: header (customer, ship-to, terms, channel: manual/storefront), lines with live pricing + availability, actions bar (confirm, deliver, invoice, cancel), doc-flow breadcrumb — _shipped 2026-11-08: the order page names the customer (and a hold or a closed account), the copied ship-to, the payment terms, and the channel. Staff orders are manual; storefront is reserved for the shop. Each line shows the charged unit, today's resolved price, the margin on the charged unit, and what is free and on hand at the order's warehouse. A draft previews the warehouse chosen for confirm. Confirm, deliver, invoice, and cancel stay the PH2-12 actions. The document trail is quote → order → delivery → invoice; delivery and invoice are named until those documents exist. The shared trail used on every document is PH2-27_
+- [x] **PH2-14** `deliveries` (packing slips): pick list view (grouped by warehouse), pack confirmation, ship (date, carrier, tracking #) → **goods issue** posts `stockMovements` (issue) + captures unit cost → journal intent `cogs` created — _shipped 2026-11-08: the pick list groups reserved quantity by warehouse. Packing claims that quantity and does not move stock. Shipping records the date, carrier, and tracking number, posts one goods issue with the unit cost, and writes a pending `cogs` journal intent. A quantity that already left is not packed, so it is not issued again. The printable slip is PH2-15. Every other event writing an intent stays PH2-26_
+- [x] **PH2-15** Delivery PDF (packing slip) + printable pick list — _shipped 2026-11-09: a packing slip downloads as a PDF from the delivery page, and the deliveries desk prints the pick list grouped by warehouse. Both are built in the browser. The slip names the order, the customer, the warehouse, the ship-to, and the quantity. A shipped slip also names the date, the carrier, and the tracking number. It does not print the unit cost. An empty pick list still downloads, and it says nothing is waiting. The shared template kit stays PH2-28_
+- [x] **PH2-16** `salesInvoices`: generate from SO/delivery (line pricing snapshot, tax breakdown), statuses (draft/posted/paid/void), number from sequence, PDF; posted → journal intent `salesInvoice` — _shipped 2026-11-09: an invoice is drafted from quantity that has already shipped, on the order or on one delivery. The number is `INV-`. The charged price and the tax rate are copied from the order line, and the amounts are worked out for the quantity on the invoice. Draft can be posted or voided. Posting writes a pending `salesInvoice` journal intent and, once every line has shipped and been billed, marks the order invoiced. Paid is a status until a payment exists; it does not reduce the balance. A posted invoice is not voided here — a credit note is PH2-17. The PDF is built in the browser. Every other event writing an intent stays PH2-26_
+- [x] **PH2-17** `creditNotes` for returns/adjustments: links to invoice, posts journal intent `creditNote`, restock decision — _shipped 2026-11-09: a credit note reduces a posted or paid invoice. The number is `CR-`. The charged price and the tax are copied from the invoice line for the credited quantity. A return may put the goods back in the order's warehouse, at the latest unit cost. An adjustment never does. Posting writes a pending `creditNote` journal intent and lowers the customer's balance. A draft can be voided. A posted note stays. The return request and the inspection are PH2-18_
+- [x] **PH2-18** `salesReturns`/RMA-lite: return request (from invoice/order, lines + qty + reason) → receive (inspect: restock / quarantine / write-off) → credit note or exchange — _shipped 2026-11-09: a return is requested from a posted invoice or from an order that has shipped. The number is `RMA-`. Receiving inspects each line into the order's warehouse. Restock puts the goods back. Quarantine holds them. A write-off receipts them and removes them, so on-hand does not change. Credit posts one credit note and lowers the balance. Exchange opens a draft order at the charged price and does not reserve stock. Cancel is only while the return is still a request. The order desk tiles stay PH2-19_
+- [x] **PH2-19** Order desk dashboard: open orders, to-pick, to-ship, to-bill, returns pending (reactive tiles) — _shipped 2026-11-09: `/sales` is the order desk. Five tiles read one query, so a pack, a shipment, an invoice, or a return moves the count. Open is not closed and not cancelled. To pick is reserved quantity that is not already on a packed slip. To ship is a packed slip. To bill is shipped quantity on an order that can still be invoiced, plus a draft invoice. A return stays pending until it is credited, exchanged, or cancelled. The procurement desk stays PH2-25_
 
 ### 2.4 Procurement documents (Procure-to-Pay)
 
-- [ ] **PH2-20** `requisitions` (internal): lines, need-by date, requester, status (draft/approved/rejected) → convert to PO _(simple threshold: role-gated approve; rules engine Phase 6)_
-- [ ] **PH2-21** `purchaseOrders`: lines, agreed price, tax, expected date, status draft → sent → partiallyReceived → received → billed; PDF; send action (print/PDF now; email when Phase 4 wires Resend)
-- [ ] **PH2-22** `goodsReceipts` against PO: partial receipts, qty accepted/rejected, auto stock receipt movement + unit cost → moving-average update hook; _(capture serials/lots — fields exist, dedicated UI Phase 5)_
-- [ ] **PH2-23** `vendorBills`: record from PO (pre-filled, **2/3-way match view**: ordered vs received vs billed with tolerance warnings) or standalone; status open → matched → paid (payment Phase 3); journal intent `vendorBill`
-- [ ] **PH2-24** Purchase returns to vendor: link receipt lines → stock out movement → debit note reference
-- [ ] **PH2-25** Procurement dashboard: open POs, overdue deliveries, receipts pending, bills pending match
+- [x] **PH2-20** `requisitions` (internal): lines, need-by date, requester, status (draft/approved/rejected) → convert to PO _(simple threshold: role-gated approve; rules engine Phase 6)_ — _shipped 2026-11-09: a requisition is `REQ-`. The requester is the signed-in user. Warehouse can draft one. Approve and reject are `procurement.approve`, so warehouse, sales, and accountant cannot. The approver may be the requester. Rejected stays rejected. Convert runs once from approved and writes a draft `PO-` for an active vendor, copying the lines and the need-by date. Stock stays put. Sending, receiving, and billing that order stay PH2-21_
+- [x] **PH2-21** `purchaseOrders`: lines, agreed price, tax, expected date, status draft → sent → partiallyReceived → received → billed; PDF; send action (print/PDF now; email when Phase 4 wires Resend) — _shipped 2026-11-09: a draft keeps the agreed price, the vendor's tax, and the expected date. Sending freezes that snapshot and marks the order sent. The PDF downloads in the browser. A receipt moves sent to partially received or received (PH2-22). A vendor bill marks a received order billed (PH2-23). Email waits for Phase 4_
+- [x] **PH2-22** `goodsReceipts` against PO: partial receipts, qty accepted/rejected, auto stock receipt movement + unit cost → moving-average update hook; _(capture serials/lots — fields exist, dedicated UI Phase 5)_ — _shipped 2026-11-09: warehouse receives a sent order (`inventory.create`). Accepted quantity posts a stock receipt at the agreed price and stores the moving average. Rejected quantity is recorded and stays out of stock. The accepted total moves the order to partially received or received. A rejection-only receipt leaves the status. Serials and lots can be named on the line; the picker is Phase 5. A vendor bill stays PH2-23_
+- [x] **PH2-23** `vendorBills`: record from PO (pre-filled, **2/3-way match view**: ordered vs received vs billed with tolerance warnings) or standalone; status open → matched → paid (payment Phase 3); journal intent `vendorBill` — _shipped 2026-11-09: a bill is `BILL-`. From a received purchase order it copies the accepted quantity and the agreed price. A standalone bill has no order. An open bill can be edited (`procurement.edit`). Match is `finance.post`. Billed quantity must equal received quantity. A unit price within 2% of the order passes; past that, match is blocked. Ordered versus received warns and does not block. Match writes one pending `vendorBill` intent and marks the linked order billed. Paid is never set. Recording a payment is Phase 3_
+- [x] **PH2-24** Purchase returns to vendor: link receipt lines → stock out movement → debit note reference — _shipped 2026-11-09: a return is `DBN-`. It names receipt lines whose quantity entered stock. Warehouse posts it (`inventory.create`). Each line issues that quantity at the receipt's unit cost. The number is the debit note reference. Rejected quantity cannot be returned, and reserved stock stays. The receipt, the purchase order, and the vendor's received total stay as they were. A journal intent waits for PH2-26. The vendor's credit is Phase 3_
+- [x] **PH2-25** Procurement dashboard: open POs, overdue deliveries, receipts pending, bills pending match — _shipped 2026-11-09: `/procurement` is the desk. Four tiles read one query, so a receipt or a matched bill moves the count. Open is not billed. Overdue is a sent or partly received order whose expected date is before today. Receipts pending is quantity still to accept on those orders. Bills pending match are open vendor bills. A received order with no bill is not in that queue. A billed order is in none of them_
 
 ### 2.5 Cross-cutting
 
-- [ ] **PH2-26** **Journal intent table** (`journalIntents`): every operational event that must post writes an intent (type, amount lines, source doc, period) — Phase 3 posting engine consumes them; backlog never lost
-- [ ] **PH2-27** Doc-flow UI component: linked-document breadcrumb (quote ⇄ SO ⇄ delivery ⇄ invoice ⇄ payment) used across documents
-- [ ] **PH2-28** PDF service module: shared template kit (company header/logo, tables, totals, footer) — reused by quotes/POs/invoices/deliveries
-- [ ] **PH2-29** O2C + P2P integration tests: full happy path + exceptions (partial delivery, price variance, return) assert stock + intents
+- [x] **PH2-26** **Journal intent table** (`journalIntents`): every operational event that must post writes an intent (type, amount lines, source doc, period) — Phase 3 posting engine consumes them; backlog never lost — _shipped 2026-11-09: a goods receipt that puts stock on hand writes one pending `goodsReceipt` intent. A rejection-only receipt writes none. A purchase return writes one pending `debitNote` intent. A manual stock adjustment writes one pending `stockAdjustment` intent, and the amount keeps the sign. A missing unit cost is zero, so the event stays on the backlog. `/finance` lists the pending rows. Nothing there is posted. Payments and the posting engine stay Phase 3_
+- [x] **PH2-27** Doc-flow UI component: linked-document breadcrumb (quote ⇄ SO ⇄ delivery ⇄ invoice ⇄ payment) used across documents — _shipped 2026-11-09: quote, order, delivery, invoice, credit note, and return share one trail. A missing delivery, invoice, or payment is still named. The open page is not a link. A credit, a return, or an exchange sits before payment when one exists. Payment has no document until Phase 3_
+- [x] **PH2-28** PDF service module: shared template kit (company header/logo, tables, totals, footer) — reused by quotes/POs/invoices/deliveries — _shipped 2026-11-09: quotes, purchase orders, invoices, packing slips, and the pick list share one letterhead. It draws the company name, a PNG or JPEG logo when the file embeds, a column table, totals on a priced document, and the invoice footer on every page. A logo that will not embed is left off, and the PDF still downloads. A packing slip and a pick list still leave the unit cost off the page_
+- [x] **PH2-29** O2C + P2P integration tests: full happy path + exceptions (partial delivery, price variance, return) assert stock + intents — _shipped 2026-11-09: one suite walks the public mutations. A quote for two ships in full, the invoice posts, stock goes to zero, and the goods-receipt, cost-of-goods, and sales-invoice intents stay pending. A quote for four ships one: the invoice is that one unit, the other three stay reserved, and a restocked return puts the unit back with a credit-note intent and no stock-adjustment intent. A requisition for two is received and matched, stock is those two, and the goods-receipt and vendor-bill intents stay pending. A unit price 3% off the order is refused; 2% matches and the bill intent uses that price. Returning one unit then issues stock at the receipt cost, and the order stays billed. Nothing is posted or marked paid_
 
 ---
 
@@ -1516,6 +1516,715 @@ order is PH2-22.
 
 **Next up:** PH2-01 — customers.
 
+### 2026-11-08 · Phase 2 (PH2-01)
+
+**Shipped:** customer master. **Phase 2: 1/29, gate still open.**
+
+- **Company.** Code, name, status (active / on hold / closed), payment
+  terms, tax group, currency, and credit limit. A blank credit limit is
+  no cap. Zero is nothing on account. Closing the account is the way
+  to retire it.
+- **People, places, notes.** Contacts keep a single primary. Addresses
+  keep one default bill-to and one default ship-to, and one address
+  may be both. The first of each takes those flags. Notes append to a
+  timeline and are not edited.
+- **Who can write.** Sales, admin, and owner open accounts. Warehouse
+  can edit an existing account (fulfillment already has `sales.edit`)
+  and cannot create one. Accountant can read. The sales form loads
+  active currencies and tax groups through `customers.options`, so it
+  does not need settings access.
+
+**Pipeline:** prettier → convex dev → tsc → **291 tests / 43 files**
+(+2 in `customers`). Checked in the browser as Owner Two: created
+Acme Clinic, added a primary contact, a default bill-to and ship-to,
+and a note, saved On hold, and confirmed the list search and status
+filter.
+
+**Next up:** PH2-02 — customer groups.
+
+### 2026-11-08 · Phase 2 (PH2-02)
+
+**Shipped:** customer groups. **Phase 2: 2/29, gate still open.**
+
+- **One tier.** Retail, Wholesale, and Institutional are the starting
+  names. A company belongs to one group, or to none. Moving it clears
+  the previous tier. The name is unique ignoring case.
+- **Retire, don't delete.** An inactive tier stays on the companies
+  that already use it. It cannot be chosen for anyone new.
+- **Who can write.** Sales, admin, and owner open a group. Warehouse
+  can rename, deactivate, and assign a company (it already has
+  `sales.edit`) and cannot create a tier. Accountant can read.
+
+**Pipeline:** prettier → convex dev → tsc → **293 tests / 44 files**
+(+2 in `customerGroups`). Checked in the browser as Owner Two: created
+the three tiers, assigned Acme Clinic to Wholesale, and confirmed the
+company page, the group page, and the customer list.
+
+**Next up:** PH2-03 — vendors.
+
+### 2026-11-08 · Phase 2 (PH2-03)
+
+**Shipped:** vendor master. **Phase 2: 3/29, gate still open.**
+
+- **Company.** Code, name, active flag, payment terms, tax group, tax
+  number, currency, and the license (number, jurisdiction, expiry).
+  A past expiry is stored. Phase 5 is what blocks an expired license.
+  Turning a vendor off keeps the row.
+- **People and places.** Contacts keep a single primary. Addresses
+  keep one default remit-to and one default ship-from, and one
+  address may be both. The first of each takes those flags.
+- **Who can write.** Warehouse, admin, and owner open a vendor.
+  Accountant can edit an existing vendor (bills already have
+  `procurement.edit`) and cannot create one. Sales can read. The
+  form loads active currencies and tax groups through
+  `vendors.options`, so it does not need settings access.
+
+**Pipeline:** prettier → convex dev → tsc → **295 tests / 45 files**
+(+2 in `vendors`). Checked in the browser as Owner Two: created Med
+Supply with a past license, a primary contact, and a default remit-to
+and ship-from, saved it inactive, and confirmed the list, the license
+column, and the Active and Inactive filters.
+
+**Next up:** PH2-04 — product↔vendor links.
+
+### 2026-11-08 · Phase 2 (PH2-04)
+
+**Shipped:** product↔vendor links. **Phase 2: 4/29, gate still open.**
+
+- **One preferred vendor.** A product may name several. The first link
+  is preferred, and removing it promotes the oldest one left. The
+  vendor SKU is optional and keeps the supplier's casing.
+- **Price comes from a receipt.** The link form does not take a last
+  purchase price. A goods receipt may name a vendor. A line with a
+  unit cost updates the existing link. No link, no new row. No cost,
+  the old price stays. An inactive vendor cannot be newly linked.
+- **Who can write.** Sales, admin, and owner maintain the link
+  (`catalog.edit`). Warehouse and accountant can read it. Warehouse
+  still posts the receipt, and that post is what writes the price.
+
+**Pipeline:** prettier → convex dev → tsc → **297 tests / 46 files**
+(+2 in `productVendors`). Checked in the browser as Owner Two: linked
+Parts Co to Lab Bench Stand as preferred with vendor SKU PC-1006,
+posted a receipt at 12.50, and confirmed the price on the product and
+on the vendor.
+
+**Next up:** PH2-05 — customer and vendor statements.
+
+### 2026-11-08 · Phase 2 (PH2-05)
+
+**Shipped:** partner statements. **Phase 2: 5/29, gate still open.**
+
+- **Customer.** Balance is invoices, less credits and payments. None
+  of those documents exist yet, so the balance is zero. Available
+  credit is the limit minus that balance. No limit means no cap.
+  Quotes, orders, deliveries, and invoices will fill the document list.
+- **Vendor.** Goods receipts that name the vendor are the documents.
+  A line with no unit cost is listed and adds nothing. Bills are not
+  in the received total.
+- **Who can read.** The customer statement is `sales.view`. The vendor
+  statement is `procurement.view`. List, detail, and create/edit were
+  already on the company pages.
+
+**Pipeline:** prettier → convex dev → tsc → **299 tests / 47 files**
+(+2 in `statements`). Checked in the browser as Owner Two: Acme Clinic
+shows balance 0.00 and no cap, Parts Co shows GRN-0002 at 25.00 and
+the receipt opens from the row, and Med Supply shows no receipts.
+
+**Next up:** PH2-06 — price lists.
+
+### 2026-11-08 · Phase 2 (PH2-06)
+
+**Shipped:** stored prices. **Phase 2: 6/29, gate still open.**
+
+- **Lists.** One list is the base. The first list becomes it, and a
+  later list can take the flag. Unsetting the only base leaves it in
+  place. Deactivating the base hands the flag to the oldest other
+  list. A list is never deleted. Its currency stays once a price is
+  on it.
+- **Tiers.** A group price and a customer price are separate rows, one
+  per product, variant, and currency. An inactive group and a closed
+  customer cannot take a new price. A customer on hold can. A quantity
+  break hangs off one of those prices and starts at 2. The price's
+  currency is the break's currency.
+- **Promotions.** A window of UTC dates, and optionally the list in
+  effect during it. Two windows may overlap. A past window is kept.
+  Deciding the winner is PH2-07.
+- **Who can write.** Reads are `sales.view`. Every price write,
+  including a change or a removal, is `sales.create`. Warehouse can
+  read a price and cannot change one. Deleting a product or a variant
+  removes the prices that name it.
+
+**Pipeline:** prettier → convex dev → tsc → **301 tests / 48 files**
+(+2 in `prices`). No screen in this task: the price list manager,
+per-customer table, and quantity-break editor are PH2-09.
+
+**Next up:** PH2-07 — resolvePrice.
+
+### 2026-11-08 · Phase 2 (PH2-07)
+
+**Shipped:** `resolvePrice`. **Phase 2: 7/29, gate still open.**
+
+- **One winner.** A customer price, then the customer's group price,
+  then a list price. Inside a tier, the variant price beats the product
+  price. A higher tier still wins when it only has a product price.
+  Zero is a real price. Nothing matched is a null unit price.
+- **The list.** An active promotion whose window covers the UTC day,
+  and whose list is active in the requested currency. The one that
+  started latest wins. If that list does not price the product, the
+  next promotion is tried, then the active base list.
+- **The break.** It applies only to the row that won, and only the
+  break with the greatest minimum the quantity still reaches.
+- **Rounding.** The unit price rounds to the currency's decimal places.
+  A half rounds away from zero. A line amount rounds again after
+  multiplying that unit by the quantity. The catalog list price is the
+  last fallback, and only in the company currency.
+
+**Pipeline:** prettier → convex dev → tsc → **308 tests / 49 files**
+(+7 in `resolvePrice`). No screen in this task. Overrides are PH2-08,
+and the pricing screens are PH2-09.
+
+**Next up:** PH2-08 — price override on a document line.
+
+### 2026-11-08 · Phase 2 (PH2-08)
+
+**Shipped:** line price overrides. **Phase 2: 8/29, gate still open.**
+
+- **A typed price or a percent off.** Both need a reason. The discount
+  is measured from the rounded resolved unit. Above 10% the line is
+  flagged and waits. A raise, or a discount of exactly 10%, applies
+  immediately. No resolved price means a typed price waits, and a
+  percent off is refused.
+- **Two people.** The person who asked cannot confirm their own.
+  Confirming takes `sales.approve`. A rejection needs a reason. Until
+  the override is applied or approved, the line still charges the
+  resolved unit.
+- **Where it sits.** One row per quote, order, invoice, or credit-note
+  line. Proposing again replaces that row. The documents themselves
+  are still PH2-11 onward. Phase 6 replaces the single 10% with
+  configurable rules.
+
+**Pipeline:** prettier → convex dev → tsc → **310 tests / 50 files**
+(+2 in `priceOverrides`). No screen in this task. The pricing screens
+are PH2-09.
+
+**Next up:** PH2-09 — pricing screens.
+
+### 2026-11-08 · Phase 2 (PH2-09)
+
+**Shipped:** pricing screens. **Phase 2: 9/29, gate still open.**
+
+- **Lists and promotions.** `/sales/prices` lists the price lists and the
+  dated promotions. The first list is still the base. A list page edits
+  the name, the base flag, and whether it is active. Currency stays
+  once the list has a price. A promotion names the list in effect
+  between two dates and is deactivated, never deleted.
+- **Prices and breaks.** A list, a customer group, and a customer each
+  have a price table. A quantity break hangs off one of those prices
+  and starts at 2. An inactive list or group, or a closed customer,
+  keeps the prices it has and refuses a new one.
+- **A sales line.** The preview uses the same winner as `resolvePrice`,
+  then the line total and the margin against the product's display
+  cost. No cost, or a unit that is not above zero, leaves the margin
+  blank. Quote and order lines reuse it once those documents exist.
+- **Who can write.** Reads stay `sales.view`. Every price write stays
+  `sales.create`. Warehouse can read a price and cannot change one.
+
+**Pipeline:** prettier → convex codegen → tsc → **311 tests / 50 files**
+(+1 in `prices`). Checked in the browser as Owner Two: a list price with a
+quantity break, the sales-line preview for a list, a customer price, and a
+group price (margin filled once the product has a display cost), and the
+price tables on a customer and a group.
+
+**Next up:** PH2-10 — pricing test matrix.
+
+### 2026-11-08 · Phase 2 (PH2-10)
+
+**Shipped:** the pricing matrix, locked in CI. **Phase 2: 10/29, gate still open.**
+
+- **Tiers and breaks.** One file walks a customer price, that customer's
+  group, the base list, the catalog list price, and a product with no
+  price. Quantities are 1, 5, 7, and 10. The break at 5 covers 7, and
+  the break at 10 replaces it. A cheaper break on a lower tier does not
+  leak. A promotion from last year, aimed at a one-pound list, does not
+  win on the day under test.
+- **Overrides.** Each resolved unit is crossed with no override, a 10%
+  discount, a 20% discount left pending, that discount approved, that
+  discount rejected, and a typed raise. Pending and rejected keep the
+  resolved unit. A raise, and a discount of exactly 10%, apply at once
+  and cannot be confirmed again. With no price, a percent off is refused
+  and a typed price waits for a second person.
+- **Where it runs.** The sales-line preview matches `resolvePrice`,
+  including the line total, and storing an override does not change the
+  resolver. CI already runs `npm test`, which includes this file.
+
+**Pipeline:** prettier → tsc → **313 tests / 51 files** (+2 in
+`pricingMatrix`). No screen in this task.
+
+**Next up:** PH2-11 — quotes.
+
+### 2026-11-08 · Phase 2 (PH2-11)
+
+**Shipped:** quotes, and a draft order copied from one. **Phase 2: 11/29, gate still open.**
+
+- **A quote.** `/sales/quotes` opens a draft for a customer who is not
+  closed. The number is `QT-`. The customer's currency, terms, and
+  default bill-to and ship-to are copied. Notes and the validity date
+  can change while it is a draft. The validity date cannot sit before
+  the quote date. Today is still valid.
+- **Lines, discount, tax.** A line prices through `resolvePrice` on the
+  quote date and refuses a product with no price in that currency. Tax
+  is snapshotted onto the line. A discount of 10% or less replaces the
+  unit and recomputes tax. Above 10% the existing override waits for a
+  second person, and the line keeps the resolved price until they
+  approve it. Send and accept refuse that wait.
+- **Status and the order.** Send needs a line. A lapsed quote cannot be
+  sent or accepted, and expire refuses a quote that is still valid.
+  Accepted, rejected, and expired stay put. Accept converts once into a
+  draft sales order (`SO-`) that copies the charged lines and prices. A
+  second convert is refused. Confirming that order is PH2-12.
+- **PDF and the statement.** Download builds an A4 quote in the browser.
+  The customer's statement lists the quote. The balance stays invoices
+  less credits and payments.
+
+**Pipeline:** prettier → convex codegen → tsc → **316 tests / 52 files**
+(+3 in `quotes`). Checked in the browser as Owner Two: Acme Clinic, Lab
+Bench Stand at the customer price of 450.00 GBP, a 10% discount applied
+to 405.00, a 20% discount left at 450.00 and blocking send, expire
+refused while the quote was still valid, then sent, accepted, and
+converted to SO-0001 at 405.00. Bill-to and ship-to copied. The statement
+lists the quote and the balance stays 0.00.
+
+**Next up:** PH2-12 — confirm a sales order and reserve stock.
+
+### 2026-11-08 · Phase 2 (PH2-12)
+
+**Shipped:** the sales-order lifecycle. **Phase 2: 12/29, gate still open.**
+
+- **Confirm.** A draft confirms at one active warehouse. Each line
+  reserves what is free there, in line order, and a shortfall is
+  flagged backorder. The order still confirms when nothing is free.
+  A closed customer and an inactive warehouse are refused. A second
+  confirm is refused.
+- **Ship.** Shipping is line by line, and it can be less than the
+  reserved quantity. That quantity is allocated: the hold ends and
+  the units leave on-hand, carrying the latest unit cost. The order
+  moves to fulfilling. The remainder stays reserved. When stock
+  arrives, reserve takes the open backorder. Invoice waits until
+  every line has shipped, and close waits until it is invoiced.
+- **Cancel.** Draft, confirmed, and fulfilling can be cancelled.
+  Whatever is still reserved is released. A quantity that already
+  shipped stays out. An invoiced order cannot be cancelled.
+- **Who.** Confirm, invoice, close, and cancel are `sales.create`.
+  Shipping and topping up a backorder are `sales.edit`, so warehouse
+  can fulfill and cannot commit the order. The customer's statement
+  lists the order and the balance stays zero.
+
+**Pipeline:** prettier → tsc → **320 tests / 54 files** (+3 in
+`salesOrders`). Checked in the browser as Owner Two: SO-0001 confirmed
+at MAIN and reserved 1 of Lab Bench Stand, then that 1 shipped. The
+order is fulfilling (reserved 0, shipped 1). MAIN on hand went from 4
+to 3. EAST stayed at 1. Invoice and close were left unclicked.
+
+**Next up:** PH2-13 — the sales-order screen.
+
+### 2026-11-08 · Phase 2 (PH2-13)
+
+**Shipped:** the sales-order screen. **Phase 2: 13/29, gate still open.**
+
+- **Header.** Customer, with a hold or a closed account called out,
+  the ship-to copied onto the order, the payment terms, and the
+  channel. A staff order is manual. Storefront is on the document
+  for the shop, and nothing writes it yet.
+- **Lines.** The charged unit stays the price from the quote. Beside
+  it is today's resolved price, the margin on the charged unit, and
+  what is free and on hand at the warehouse. A draft uses the
+  warehouse selected for confirm. No warehouse yet leaves
+  availability blank.
+- **Actions and the trail.** Confirm, deliver, invoice, and cancel
+  are the same transitions as PH2-12. Deliver stays on the line,
+  because a shipment can be part of the quantity. The trail reads
+  quote → order → delivery → invoice. Delivery and invoice are
+  named and not links until those documents exist.
+
+**Pipeline:** prettier → tsc → **321 tests / 54 files** (+1 in
+`salesOrders`). Checked in the browser as Owner Two on SO-0001:
+Acme Clinic on hold, ship-to 12 High Street, terms due on receipt,
+channel manual. The bench charges 405.00 and today's price is
+450.00, margin 21.0%. MAIN shows 3 available and 3 on hand. The
+quote link opens QT-0001. Invoice was left unclicked.
+
+**Next up:** PH2-14 — deliveries.
+
+### 2026-11-08 · Phase 2 (PH2-14)
+
+**Shipped:** packing slips. **Phase 2: 14/29, gate still open.**
+
+- **Pick and pack.** Confirmed orders with quantity still reserved are
+  grouped by warehouse. Packing opens a `DN-` slip and claims that
+  quantity. Stock stays where it is. A packed slip can be cancelled,
+  and cancelling the order cancels a slip that has not shipped.
+- **Ship.** The date, carrier, and tracking number are required. Ship
+  is the goods issue: a release and an issue, with the latest unit
+  cost on the issue and on the slip. One pending `cogs` intent records
+  the cost. Quantity that already left cannot be packed, so it is not
+  issued a second time.
+- **Trail.** The order names the slip once one exists. The customer
+  statement lists the delivery at the selling price and the balance
+  stays zero.
+
+**Pipeline:** prettier → tsc → **324 tests / 55 files** (+3 in
+`deliveries`). Checked in the browser as Owner Two: SO-0002 reserved
+1 Lab Bench Stand at MAIN, packed DN-0001, and shipped it on
+2026-11-08 with City Freight and tracking TRK-1006. The issue kept
+unit cost 12.50. Cost of goods is 12.50 GBP, period 2026-11, pending.
+MAIN went from 3 on hand to 2. EAST stayed at 1. Invoice was not
+clicked.
+
+**Next up:** PH2-15 — the delivery PDF.
+
+### 2026-11-09 · Phase 2 (PH2-15)
+
+**Shipped:** the delivery PDF. **Phase 2: 15/29, gate still open.**
+
+- **Packing slip.** Download PDF on the delivery page. It names the
+  company, the slip, the order, the customer, the warehouse, the
+  ship-to, and each line's quantity. A shipped slip adds the date,
+  the carrier, and the tracking number. The unit cost stays off the
+  page that travels with the goods.
+- **Pick list.** Print pick list on the deliveries desk, grouped by
+  warehouse. An empty list still downloads, and it says nothing is
+  waiting to pick.
+- Both PDFs are built in the browser. The shared template kit stays
+  PH2-28.
+
+**Pipeline:** prettier → tsc → **325 tests / 55 files** (+1 in
+`deliveries`). Checked in the browser as Owner Two. Print pick list
+on the empty desk downloaded with no error. DN-0001 downloaded a
+PDF (`%PDF-`, City Freight, TRK-1006 still on the page). Invoice
+and Close were not clicked.
+
+**Next up:** PH2-16 — sales invoices.
+
+### 2026-11-09 · Phase 2 (PH2-16)
+
+**Shipped:** sales invoices. **Phase 2: 16/29, gate still open.**
+
+- **Draft.** Invoice on a shipped order, or on a shipped delivery,
+  opens an `INV-` draft for the quantity that has left and is not
+  already billed. The charged price and the tax rate are copied from
+  the order line. The amounts are worked out for that quantity.
+- **Post.** Posting writes a pending `salesInvoice` intent. When
+  every line has shipped and been billed, the order becomes invoiced.
+  A draft can be voided, which releases the quantity. A posted
+  invoice is not voided here.
+- **Paid.** Mark paid records the status. It does not record a
+  payment, so the statement balance still includes it. The PDF is
+  built in the browser.
+
+**Pipeline:** prettier → tsc → **329 tests / 56 files** (+4 in
+`invoices`). Checked in the browser as Owner Two. The empty pick
+list sits in a card. SO-0002 drafted INV-00001 for 450.00 GBP, due
+on receipt, and posting it marked the order invoiced. Acme's balance
+is 450.00. Close was not clicked. SO-0001 was already marked
+invoiced before this document existed, so it is not on the statement.
+
+**Next up:** PH2-17 — credit notes.
+
+### 2026-11-09 · Phase 2 (PH2-17)
+
+**Shipped:** credit notes. **Phase 2: 17/29, gate still open.**
+
+- **Draft.** A posted or paid invoice can be credited. The price and
+  the tax come from the invoice line. A return may put the goods back
+  in the order's warehouse. An adjustment cannot.
+- **Post.** Posting writes a pending `creditNote` intent. A restock
+  is a receipt at the latest unit cost. The posted note lowers the
+  customer's balance. A draft can be voided. A posted note stays.
+- The return request and the inspection stay PH2-18.
+
+**Pipeline:** prettier → tsc → **331 tests / 57 files** (+2 in
+`creditNotes`). Checked in the browser as Owner Two: INV-00001
+drafted CR-0001 as an adjustment for 450.00 GBP, reason “Price
+correction”, and posting it wrote the pending intent. The goods stay
+out of stock. Acme’s balance is 0.00. Close and Mark paid were not
+clicked.
+
+**Next up:** PH2-18 — sales returns.
+
+### 2026-11-09 · Phase 2 (PH2-18)
+
+**Shipped:** sales returns. **Phase 2: 18/29, gate still open.**
+
+- **Request.** A posted invoice or a shipped order can open an `RMA-`
+  for a quantity and a reason. A request can be cancelled. Once the
+  goods are received, it cannot.
+- **Receive.** Each line is restocked, quarantined, or written off at
+  the order's warehouse. Restock is a receipt. Quarantine is a receipt
+  and a hold. A write-off is a receipt and a removal, so on-hand is
+  unchanged.
+- **Outcome.** Credit posts a credit note and lowers the balance.
+  Exchange opens a draft order at the charged price. It does not
+  reserve stock. The order desk tiles stay PH2-19.
+
+**Pipeline:** prettier → tsc → **333 tests / 58 files** (+2 in
+`salesReturns`). Checked in the browser as Owner Two: SO-0001
+requested RMA-0001, reason “Damaged in transit”. Receiving it as a
+write-off left MAIN at 2 on hand. Exchange drafted SO-0003 at
+405.00 GBP, still a draft, nothing reserved. Confirm and Close were
+not clicked. SO-0001 has no invoice document, so the credit was not
+the browser path. The test credits a posted invoice.
+
+**Next up:** PH2-19 — order desk.
+
+### 2026-11-09 · Phase 2 (PH2-19)
+
+**Shipped:** the order desk. **Phase 2: 19/29, gate still open.**
+
+- **Queues.** `/sales` shows open orders, to pick, to ship, to bill, and
+  returns pending. The counts come from one query, so they move when a
+  document does.
+- **Open** is not closed and not cancelled. **To pick** is reserved
+  quantity not already on a packed slip. **To ship** is a packed slip.
+  **To bill** is shipped quantity that can still be invoiced, plus a
+  draft invoice. A return is pending until it is credited, exchanged,
+  or cancelled.
+
+**Pipeline:** prettier → tsc → **335 tests / 59 files** (+2 in
+`orderDesk`). Checked in the browser as Owner Two. Open orders is 3:
+SO-0001 and SO-0002 invoiced, SO-0003 draft. To pick, to ship, to
+bill, and returns pending are empty. Opening SO-0003 left it a draft.
+Confirm and Close were not clicked.
+
+**Next up:** PH2-20 — requisitions.
+
+### 2026-11-09 · Phase 2 (PH2-20)
+
+**Shipped:** internal requisitions. **Phase 2: 20/29, gate still open.**
+
+- **Request.** Lines, a need-by date, and the signed-in user. The number is
+  `REQ-`. A draft can be edited. Rejected cannot.
+- **Approve.** The role is the gate. Warehouse can request and cannot
+  approve. An owner can approve their own request. There is no money
+  threshold.
+- **Convert.** An approved request becomes one draft purchase order for
+  an active vendor. A second convert is refused. The order is not sent.
+
+**Pipeline:** prettier → tsc → **337 tests / 60 files** (+2 in
+`requisitions`). Checked in the browser as Owner Two. REQ-0001 asks for
+1 Lab Bench Stand at its existing 320.00 cost, needed by 2026-11-16,
+note “Spare bench stand”. Approved, then converted to draft PO-0001 for
+Parts Co in GBP, expected 2026-11-16. MAIN stayed 2 on hand. SO-0003 was
+not confirmed. Close was not clicked.
+
+**Next up:** PH2-21 — purchase orders.
+
+### 2026-11-09 · Phase 2 (PH2-21)
+
+**Shipped:** purchase orders. **Phase 2: 21/29, gate still open.**
+
+- **Draft.** Agreed price, tax from the vendor's tax group, and the
+  expected date. A line can be added or removed. An accountant can edit.
+  Warehouse cannot.
+- **Send.** Owner or admin. The price and tax freeze, and the order is
+  sent. Stock stays put. The PDF downloads in the browser. Email waits
+  for Phase 4.
+- **Later statuses.** A receipt moves the order to partially received or
+  received. A vendor bill marks a received order billed.
+
+**Pipeline:** prettier → tsc → **339 tests / 61 files** (+2 in
+`purchaseOrders`). Checked in the browser as Owner Two. PO-0001 for
+Parts Co, 1 Lab Bench Stand at the existing 320.00, expected
+2026-11-16. Parts Co has no tax group, so tax is 0.00 GBP. Saved the
+agreed price, sent the order, and downloaded the PDF. MAIN stayed 2 on
+hand. Nothing was received or billed.
+
+**Next up:** PH2-22 — goods receipts against a purchase order.
+
+### 2026-11-09 · Phase 2 (PH2-22)
+
+**Shipped:** goods receipts against a purchase order. **Phase 2: 22/29, gate still open.**
+
+- **Receive.** Warehouse posts the receipt (`inventory.create`). Sales and
+  accountant cannot. Accepted quantity enters the chosen warehouse at
+  the agreed unit price. Rejected quantity is stored and does not move
+  stock. A rejection on its own leaves the order where it is.
+- **Status.** The accepted total, including earlier receipts, moves a
+  sent order to partially received or received. Billing stays PH2-23.
+- **Cost.** The ledger line keeps the purchase unit cost. The receipt
+  line stores the moving average after that quantity lands. Valuation
+  still reads the latest unit cost until PH3-06. An existing
+  product↔vendor link takes the purchase price as its last cost.
+
+**Pipeline:** prettier → tsc → **342 tests / 62 files** (+3 in
+`purchaseReceipts`). Checked in the browser as Owner Two. REQ-0002 for
+2 Ultrasound Gel 5L (DEMO-1008) at the stored cost 6.00, need-by
+2026-11-16, note “Ultrasound gel”. Approved and converted to PO-0002
+for Parts Co, tax 0.00 GBP, expected 2026-11-16, then sent. Received at
+MAIN: 1 accepted and 1 rejected, GRN-0003. The order is partially
+received, 1 of 2 accepted. Gel at MAIN is 1 on hand, value 6.00. The
+bench stayed MAIN 2 / 25.00 and EAST 1 / 4.00. PO-0001 was not
+received. Parts Co’s statement received total is 31.00 (the new receipt
+adds 6.00). Gel has no vendor link, so no last purchase price was
+written.
+
+**Next up:** PH2-23 — vendor bills.
+
+### 2026-11-09 · Phase 2 (PH2-23)
+
+**Shipped:** vendor bills. **Phase 2: 23/29, gate still open.**
+
+- **Record.** From a received purchase order, or on its own. The order
+  bill copies the accepted quantity and the agreed price. An accountant
+  can record and edit an open bill. Warehouse and sales cannot. A
+  partially received order cannot be billed, and an order takes one bill.
+- **Match.** Owner, admin, or accountant (`finance.post`). Billed quantity
+  must equal what was received. A unit price within 2% of the agreed
+  price passes; a wider gap blocks the match. Ordered versus received is
+  a warning and does not block. A standalone bill has nothing to compare.
+  Match writes one pending `vendorBill` journal intent and marks the
+  linked order billed. The bill does not move stock.
+- **Paid.** The status exists. Nothing sets it. Recording a payment is
+  Phase 3.
+
+**Pipeline:** prettier → tsc → **344 tests / 63 files** (+2 in
+`vendorBills`). Checked in the browser as Owner Two. PO-0002 was
+partially received, so the remaining gel unit was received at MAIN
+(1 accepted, GRN-0004). The order is received, 2 of 2 accepted and 1
+rejected. BILL-0001, dated 2026-11-09, shows ordered 2, received 2,
+billed 2, order price 6.00 GBP, bill price 6.00 GBP, tax 0.00, total
+12.00. Match made the bill matched and PO-0002 billed. The screen says
+recording a payment is Phase 3. A standalone bill, BILL-0002, reference
+GEL-ADJ, is 1 gel at 6.00 GBP with no order to compare, then matched.
+Gel at MAIN is 2 on hand, value 12.00. The bench stayed MAIN 2 / 25.00
+and EAST 1 / 4.00. PO-0001 was not received or billed. Parts Co’s
+statement received total is 37.00 (GRN-0004 adds 6.00). The bills
+themselves are not on that statement. Gel still has no vendor link.
+
+**Next up:** PH2-24 — purchase returns to the vendor.
+
+### 2026-11-09 · Phase 2 (PH2-24)
+
+**Shipped:** purchase returns to the vendor. **Phase 2: 24/29, gate still open.**
+
+- **Return.** From a goods receipt. Warehouse posts it (`inventory.create`).
+  Sales and accountant can read the debit note and cannot post one. The
+  quantity has to be stock that receipt line put on hand, minus what
+  already went back. Rejected quantity never entered, so it cannot be
+  returned. Reserved stock stays.
+- **Stock.** Each line posts an issue at the receipt's unit cost. The
+  latest unit cost does not change. The receipt and the purchase order
+  stay as they were.
+- **Debit note.** The document number (`DBN-`) is the reference. It does
+  not write a journal intent (PH2-26) and it does not change the vendor's
+  received total. The vendor's credit is Phase 3.
+
+**Pipeline:** prettier → tsc → **347 tests / 64 files** (+3 in
+`purchaseReturns`). Checked in the browser as Owner Two. GRN-0004 had
+accepted 1 Ultrasound Gel 5L at 6.00. Returned that 1, reason “Damaged
+seal”. DBN-0001, Parts Co, MAIN, amount 6.00. Gel at MAIN is now 1 on
+hand, value 6.00. The bench stayed MAIN 2 / 25.00 and EAST 1 / 4.00.
+PO-0002 stayed billed, with BILL-0001 matched and accepted 2 of 2.
+Parts Co’s received total stayed 37.00. The debit note is not on that
+statement. PO-0001 was not touched.
+
+**Next up:** PH2-25 — the procurement dashboard.
+
+### 2026-11-09 · Phase 2 (PH2-25)
+
+**Shipped:** the procurement desk. **Phase 2: 25/29, gate still open.**
+
+- **Open.** A draft, sent, partially received, or received purchase order.
+  A billed order is finished.
+- **Overdue.** Sent or partially received, and the expected date is before
+  today. A draft has not been sent. A received order has arrived.
+- **Receipts.** Quantity still to accept on a sent or partially received
+  order. Rejected quantity does not count as received.
+- **Bills.** An open vendor bill. Matched and paid are done. A received
+  order with no bill is not in this queue.
+
+**Pipeline:** prettier → tsc → **349 tests / 65 files** (+2 in
+`procurementDesk`). Checked in the browser as Owner Two. The desk showed
+1 open purchase order (PO-0001, sent, Parts Co), 0 overdue, 1 receipt
+pending (PO-0001, 1 unit), and 0 bills pending match. PO-0001 is expected
+2026-11-16, so it is not overdue. Opening it left it sent, accepted 0 of
+1, and unbilled. Nothing was received or billed.
+
+**Next up:** PH2-26 — the remaining journal intents.
+
+### 2026-11-09 · Phase 2 (PH2-26)
+
+**Shipped:** the remaining journal intents. **Phase 2: 26/29, gate still open.**
+
+- **Goods receipt.** Quantity that enters stock writes one pending intent. The amount is that quantity times the purchase price, or the typed unit cost. A missing cost is zero. A receipt that only rejects writes nothing.
+- **Debit note.** A purchase return writes one pending intent at the receipt line's unit cost. The receipt, the order, and the vendor's received total stay as they were.
+- **Stock adjustment.** A manual adjustment writes one pending intent. The amount keeps the sign of the quantity. A sales-return write-off is not one of these: the goods come back and leave in the same receive, and the credit note is the posting.
+- **Currency.** The purchase order's, otherwise the vendor's, otherwise the company base currency.
+- **Backlog.** `/finance` lists the pending rows for anyone with finance view. Warehouse cannot open it. Posting them is Phase 3. Documents that already existed were not backfilled.
+
+**Pipeline:** prettier → tsc → **351 tests / 66 files** (+2 in
+`journalIntents`). Checked in the browser as Owner Two. The backlog
+showed six pending rows and no post action: DN-0001 at 12.50 GBP,
+INV-00001 at 450.00 GBP, CR-0001 at 450.00 GBP, BILL-0001 at 12.00 GBP,
+BILL-0002 at 6.00 GBP, and BILL-0003 at 320.00 GBP. No stock was
+received or adjusted.
+
+**Next up:** PH2-27 — the doc-flow component.
+
+### 2026-11-09 · Phase 2 (PH2-27)
+
+**Shipped:** the document trail. **Phase 2: 27/29, gate still open.**
+
+- One query, `sales.view`, reads the sale behind a quote, an order, a delivery, an invoice, a credit note, or a return.
+- The trail is quote, order, delivery, invoice, then a credit, a return, or an exchange when one exists, then payment.
+- A step with no document is still named. The page you are on is not a link.
+- A void invoice, a cancelled delivery, and a cancelled return stay off the trail unless that page is open.
+- An invoice keeps the delivery it was raised from. Several deliveries otherwise share one step.
+- Payment is named. Recording one is Phase 3.
+
+**Pipeline:** prettier → tsc → **356 tests / 67 files** (+5 in
+`docFlow`). Checked in the browser. DN-0001 trailed to QT-0002, SO-0002,
+INV-00001, and CR-0001, with Payment named and not a link. QT-0002 showed
+the same chain with the quote as the current page. SO-0001, which was
+invoiced before those documents existed, named Delivery and Invoice with
+no link, and linked RMA-0001 and the exchange SO-0003. Nothing was
+closed, confirmed, or marked paid.
+
+**Next up:** PH2-28 — the shared PDF kit.
+
+### 2026-11-09 · Phase 2 (PH2-28)
+
+**Shipped:** the shared PDF kit. **Phase 2: 28/29, gate still open.**
+
+- One letterhead draws the company name, an optional logo, a column table, the totals, and the invoice footer.
+- Quotes, purchase orders, invoices, packing slips, and the pick list use it. A priced document has net, tax, and total. A slip and a pick list have item and quantity only.
+- A PNG or JPEG logo is embedded when the file is valid. A logo that will not embed is left off, and the PDF still downloads.
+- The invoice footer is printed at the bottom of every page. A packing slip and a pick list still leave the unit cost off the page.
+
+**Pipeline:** prettier → tsc → **360 tests / 68 files** (+4 in
+`pdfKit`). Checked in the browser as Owner Two. Download PDF on
+QT-0002 saved a PDF with the company name, the quote number, the
+line, the total, and the invoice footer. The unit cost was not on
+it. The logo on file did not embed, and the download still
+completed. Nothing was closed, confirmed, or marked paid.
+
+**Next up:** PH2-29 — the order-to-cash and procure-to-pay integration tests.
+
+### 2026-11-09 · Phase 2 (PH2-29)
+
+**Shipped:** the order-to-cash and procure-to-pay integration tests. **Phase 2: 29/29, gate still open.**
+
+- A quote for two ships in full. Stock goes to zero. The goods-receipt, cost-of-goods, and sales-invoice intents stay pending.
+- A quote for four ships one. The invoice is that unit, and the other three stay reserved. A restocked return puts the unit back and writes a credit-note intent. It does not write a stock adjustment.
+- A requisition for two is received and matched. Stock is those two. The goods-receipt and vendor-bill intents stay pending.
+- A unit price 3% off the order does not match. A price 2% off does, and the bill intent uses that price. Returning one unit issues it at the receipt cost. The order stays billed.
+- Nothing is posted, and nothing is marked paid. Recording a payment is Phase 3.
+
+**Pipeline:** prettier → tsc → **364 tests / 69 files** (+4 in
+`cycles`). These tests call the mutations. They are not a click-through
+of the screens, so the Phase 2 exit checks stay open.
+
+**Next up:** the Phase 2 exit checks, starting with a manual order-to-cash run.
+
 | Date       | Session         | Shipped (task IDs) | Decisions / notes                                                                                                                                     | Next up                            |
 | ---------- | --------------- | ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------- |
 | 2026-10-04 | Plan created    | —                  | Research doc + development plan aligned with scoping decisions                                                                                        | Start Phase 0 (PH0-01…)            |
@@ -1544,3 +2253,32 @@ order is PH2-22.
 | 2026-11-08 | Phase 1 (cont.) | PH1-23             | Inventory screens: stock list and detail, transfers, adjustments, and the manual receipt pages. Low stock means nothing available until reorder points. 283 tests | PH1-24 (reorder points)            |
 | 2026-11-08 | Phase 1 (cont.) | PH1-24             | Reorder points per product, with a warehouse override. Low stock is at or below the point. The daily job notifies inventory editors once per dip. 287 tests | PH1-25 (stock correctness suite)   |
 | 2026-11-08 | Phase 1 close   | PH1-25             | Ledger sums match on-hand through receive, transfer, reserve, issue, and adjust. Two reservations started together cannot oversell. 289 tests. Phase 1 gate closed | PH2-01 (customers)                 |
+| 2026-11-08 | Phase 2 start   | PH2-01             | Customer companies with contacts, bill/ship addresses, terms, tax, currency, credit limit, and an append-only note timeline. Warehouse can edit, not create. 291 tests | PH2-02 (customer groups)           |
+| 2026-11-08 | Phase 2 (cont.) | PH2-02             | One tier per company. Retail, Wholesale, and Institutional start the list. An inactive tier stays on current companies and cannot take a new one. 293 tests | PH2-03 (vendors)                   |
+| 2026-11-08 | Phase 2 (cont.) | PH2-03             | Vendor companies with contacts, remit/ship addresses, terms, tax, currency, and a stored license. A past expiry is kept. Warehouse can create, not edit. 295 tests | PH2-04 (product↔vendor links)      |
+| 2026-11-08 | Phase 2 (cont.) | PH2-04             | A product names its vendors, one preferred. The vendor SKU is optional. A receipt writes the last purchase price onto an existing link. 297 tests | PH2-05 (statements)                |
+| 2026-11-08 | Phase 2 (cont.) | PH2-05             | Customer balance is invoices less credits and payments, zero until those documents exist. A vendor statement lists the receipts that name them. 299 tests | PH2-06 (price lists)               |
+| 2026-11-08 | Phase 2 (cont.) | PH2-06             | A base price list, group and customer prices, quantity breaks from qty 2, and a dated promotion. Writes are sales.create. 301 tests | PH2-07 (resolvePrice)              |
+| 2026-11-08 | Phase 2 (cont.) | PH2-07             | One price: customer, then group, then list. A break applies only to the winning row. The unit rounds to the currency's decimal places. 308 tests | PH2-08 (price override)            |
+| 2026-11-08 | Phase 2 (cont.) | PH2-08             | A line can take a typed price or a percent off, with a reason. Above 10% a second person confirms it. 310 tests | PH2-09 (pricing screens)           |
+| 2026-11-08 | Phase 2 (cont.) | PH2-09             | Price lists, group and customer prices, quantity breaks, and a sales-line margin preview. Writes stay sales.create. 311 tests | PH2-10 (pricing test matrix)       |
+| 2026-11-08 | Phase 2 (cont.) | PH2-10             | The pricing matrix crosses customer, group, list, and catalog with quantity breaks and overrides. CI runs it with the suite. 313 tests | PH2-11 (quotes)                    |
+| 2026-11-08 | Phase 2 (cont.) | PH2-11             | Quotes: lines, tax, a discount through the 10% override, validity, PDF, and one conversion into a draft order that keeps the charged prices. 316 tests | PH2-12 (confirm and reserve)       |
+| 2026-11-08 | Phase 2 (cont.) | PH2-12             | Confirm reserves free stock and flags a short line backorder. A line ships in part. Cancel releases the hold. 320 tests | PH2-13 (sales order screen)        |
+| 2026-11-08 | Phase 2 (cont.) | PH2-13             | Order screen: customer, ship-to, terms, channel, today's price, availability, and the quote-to-invoice trail. 321 tests | PH2-14 (deliveries)                |
+| 2026-11-08 | Phase 2 (cont.) | PH2-14             | Packing slips grouped by warehouse. Ship posts one goods issue with the unit cost and a pending cost-of-goods intent. 324 tests | PH2-15 (delivery PDF)              |
+| 2026-11-09 | Phase 2 (cont.) | PH2-15             | Packing-slip PDF and a printable pick list, built in the browser. The slip leaves the unit cost off. 325 tests | PH2-16 (sales invoices)            |
+| 2026-11-09 | Phase 2 (cont.) | PH2-16             | Invoices drafted from shipped quantity, with the charged price and tax snapshotted. Posting writes a sales-invoice intent. 329 tests | PH2-17 (credit notes)              |
+| 2026-11-09 | Phase 2 (cont.) | PH2-17             | Credit notes against a posted invoice. A return can restock. An adjustment cannot. Posting writes a credit-note intent. 331 tests | PH2-18 (sales returns)             |
+| 2026-11-09 | Phase 2 (cont.) | PH2-18             | Returns requested from an invoice or a shipped order. Receive restocks, quarantines, or writes off. Credit or a draft exchange. 333 tests | PH2-19 (order desk)                |
+| 2026-11-09 | Phase 2 (cont.) | PH2-19             | Order desk at /sales: open orders, to pick, to ship, to bill, returns pending. 335 tests | PH2-20 (requisitions)              |
+| 2026-11-09 | Phase 2 (cont.) | PH2-20             | Requisitions: lines, need-by, requester. Role-gated approve, then one draft purchase order. 337 tests | PH2-21 (purchase orders)           |
+| 2026-11-09 | Phase 2 (cont.) | PH2-21             | Purchase orders: agreed price, vendor tax, expected date, send, and a PDF. Receipt and bill move the later statuses. 339 tests | PH2-22 (goods receipts against a PO) |
+| 2026-11-09 | Phase 2 (cont.) | PH2-22             | Goods receipts against a sent purchase order. Accepted quantity enters stock at the agreed price and stores a moving average. Rejected quantity stays out. 342 tests | PH2-23 (vendor bills) |
+| 2026-11-09 | Phase 2 (cont.) | PH2-23             | Vendor bills from a received order or standalone. Match compares ordered, received, and billed, then writes a vendor-bill intent and marks the order billed. Payment waits. 344 tests | PH2-24 (purchase returns) |
+| 2026-11-09 | Phase 2 (cont.) | PH2-24             | Purchase returns from a receipt line. Stock leaves at the receipt cost, and the document number is the debit note. The order and the vendor total stay. 347 tests | PH2-25 (procurement dashboard) |
+| 2026-11-09 | Phase 2 (cont.) | PH2-25             | Procurement desk at /procurement: open orders, overdue deliveries, receipts pending, bills pending match. 349 tests | PH2-26 (journal intents) |
+| 2026-11-09 | Phase 2 (cont.) | PH2-26             | Goods receipts, debit notes, and stock adjustments write a pending journal intent. /finance lists the backlog. Posting stays Phase 3. 351 tests | PH2-27 (doc-flow) |
+| 2026-11-09 | Phase 2 (cont.) | PH2-27             | One document trail on quote, order, delivery, invoice, credit, and return. Payment is named until Phase 3. 356 tests | PH2-28 (PDF kit) |
+| 2026-11-09 | Phase 2 (cont.) | PH2-28             | Shared PDF letterhead for quotes, purchase orders, invoices, packing slips, and the pick list. Logo is skipped when it will not embed. 360 tests | PH2-29 (O2C + P2P tests) |
+| 2026-11-09 | Phase 2 (cont.) | PH2-29             | Order-to-cash and procure-to-pay through the mutations. Partial delivery, price tolerance, and returns assert stock and pending intents. 364 tests | Phase 2 exit checks |

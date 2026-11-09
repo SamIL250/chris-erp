@@ -1,4 +1,5 @@
 import { ConvexError } from "convex/values";
+import { customerGroupNameKey, STARTER_CUSTOMER_GROUPS } from "../lib/customers";
 import { SYSTEM_ROLES } from "../lib/permissions";
 import { auditedMutation } from "./_lib/audit";
 import { inviteUser } from "./_lib/invites";
@@ -15,12 +16,14 @@ import type { Id } from "./_generated/dataModel";
  *   1. one demo organization (only while NONE exists — never touches yours)
  *   2. base currencies USD/EUR/GBP (missing codes only)
  *   3. canonical tax rates standard/reduced/zero (missing names only)
- *   4. the default document sequences (PH0-25, already idempotent)
- *   5. one invited user per system role (`<role>@example.com`) with that
+ *   4. the starting customer groups Retail, Wholesale, Institutional
+ *      (missing names only — PH2-02)
+ *   5. the default document sequences (PH0-25, already idempotent)
+ *   6. one invited user per system role (`<role>@example.com`) with that
  *      role granted — invite codes returned in the result so a dev can set
  *      passwords without Resend. Existing users are only ever given a role
  *      they don't have yet; disabled accounts are left alone.
- *   6. a demo category tree + products (slug/SKU-keyed) — including one
+ *   7. a demo category tree + products (slug/SKU-keyed) — including one
  *      uncategorized and one archived product, so the Categories page shows
  *      real counts and the archived exclusion (CT-03).
  *
@@ -121,13 +124,31 @@ export const seed = auditedMutation({
       }
     }
 
-    // 4. Default document sequences (PH0-25 — idempotent by design).
+    // 4. Customer groups — the three starting tiers, missing names only.
+    const groupKeys = new Set(
+      (await ctx.db.query("customerGroups").collect()).map((row) => row.nameKey),
+    );
+    for (const name of STARTER_CUSTOMER_GROUPS) {
+      const nameKey = customerGroupNameKey(name);
+      if (!groupKeys.has(nameKey)) {
+        await ctx.db.insert("customerGroups", {
+          name,
+          nameKey,
+          active: true,
+          createdAt: now,
+          updatedAt: now,
+        });
+        bump("customerGroups");
+      }
+    }
+
+    // 5. Default document sequences (PH0-25 — idempotent by design).
     const sequencesBefore = (await ctx.db.query("sequences").collect()).length;
     await ensureDefaultSequences(ctx);
     const sequencesCreated = (await ctx.db.query("sequences").collect()).length - sequencesBefore;
     if (sequencesCreated > 0) created.sequences = sequencesCreated;
 
-    // 5. One invited user per system role.
+    // 6. One invited user per system role.
     for (const role of SYSTEM_ROLES) {
       const email = `${role.key}@example.com`;
       const matches = await ctx.db
@@ -161,7 +182,7 @@ export const seed = auditedMutation({
       }
     }
 
-    // 6. Demo catalog (CT-03) — keyed by slug/SKU so re-runs skip whatever
+    // 7. Demo catalog (CT-03) — keyed by slug/SKU so re-runs skip whatever
     //    already exists; seeded categories append after your own roots.
     const demoCategories = [
       { name: "Imaging & Diagnostics", slug: "imaging-diagnostics", parentSlug: null },
@@ -386,7 +407,7 @@ export const seed = auditedMutation({
     }
     if (joinRows > 0) bump("productCategories", joinRows);
 
-    // 7. Demo attributes (CT-03) — three definitions grouped into a set the
+    // 8. Demo attributes (CT-03) — three definitions grouped into a set the
     //    ultrasound category inherits, so the Attributes page and
     //    `attributes:forCategory` have real content on a fresh seed.
     const demoDefinitions: {
@@ -433,7 +454,7 @@ export const seed = auditedMutation({
       bump("attributeSets");
     }
 
-    // 8. Demo attribute VALUES (CT-03, extended as modules land — PH1-07
+    // 9. Demo attribute VALUES (CT-03, extended as modules land — PH1-07
     //    owns `attributeValues` writes): the two ultrasound products carry
     //    specs from the inherited "Physical specs" set, so the PH1-07
     //    editor, spec tables, and PH1-08/PH4 facets render real data.

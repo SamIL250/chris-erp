@@ -9,6 +9,8 @@ import { Button } from "@/components/base/buttons/button";
 import { Dropdown } from "@/components/base/dropdown/dropdown";
 import { Input } from "@/components/base/input/input";
 import { usePageLabel } from "@/components/shared/page-label";
+import { useProductCovers } from "@/hooks/use-product-covers";
+import { ProductCover } from "@/components/catalog/product-cover";
 import { Card } from "@/components/ui/card";
 import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
 import { PageHeader } from "@/components/ui/page-header";
@@ -70,6 +72,7 @@ export function VariantsEditor({ id }: { id: string }) {
   });
   const sync = useMutation(api.catalog.variants.sync);
   usePageLabel(existing && existing !== null ? existing.product.name : undefined);
+  const covers = useProductCovers(existing?.product ? [id] : []);
   const update = useMutation(api.catalog.variants.update);
 
   // Local axis picks: `null` until first interaction, then the picked set
@@ -299,15 +302,20 @@ export function VariantsEditor({ id }: { id: string }) {
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        title={`Variants — ${row.name}`}
-        description="Per-variant SKU, barcode, price, and tracking flags — defaults filled from the product."
-        actions={
-          <Button color="secondary" href={`/catalog/products/${row._id}`}>
-            Back to product
-          </Button>
-        }
-      />
+      <div className="flex items-start gap-4">
+        <ProductCover src={covers.get(id)} className="size-16" />
+        <div className="min-w-0 flex-1">
+          <PageHeader
+            title={`Variants — ${row.name}`}
+            description="Per-variant SKU, barcode, price, and tracking flags — defaults filled from the product."
+            actions={
+              <Button color="secondary" href={`/catalog/products/${row._id}`}>
+                Back to product
+              </Button>
+            }
+          />
+        </div>
+      </div>
 
       <Card>
         <div className="flex flex-col gap-5 p-6">

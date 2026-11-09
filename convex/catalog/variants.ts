@@ -4,6 +4,7 @@ import { SKU_MAX_LENGTH, validateSku } from "../../lib/sku";
 import { trackingError } from "../../lib/tracking";
 import { auditedMutation } from "../_lib/audit";
 import { requirePermission } from "../_lib/permissions";
+import { removePricesForVariant } from "../sales/prices";
 import { applicableAttributes } from "./attributes";
 import { query, type MutationCtx, type QueryCtx } from "../_generated/server";
 import type { Doc, Id } from "../_generated/dataModel";
@@ -415,6 +416,7 @@ export const remove = auditedMutation({
     if (row === null) {
       throw new ConvexError("This variant no longer exists.");
     }
+    await removePricesForVariant(ctx, row.productId, row._id);
     await ctx.db.delete(args.id);
     return {
       result: undefined,

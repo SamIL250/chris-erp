@@ -93,7 +93,9 @@ _When adding a module: add a row here first, then the permission constant, then 
   (catalog.delete) (PH1-07, PH1-08);
   `products.duplicate` (catalog.create — a copy is a new draft, not an
   edit), `products.picker` (catalog.view — archived excluded; the
-  storefront must not use this query, drafts are still pickable)
+  storefront must not use this query, drafts are still pickable; each
+  row includes the cover URL), `products.covers` (catalog.view — cover
+  URL for a set of product ids, null when the product has no image)
   (PH1-15);
   `warehouses.list` (inventory.view), `warehouses.create`
   (inventory.create), `warehouses.update` (inventory.edit),
@@ -135,7 +137,225 @@ _When adding a module: add a row here first, then the permission constant, then 
   `variants.list` (catalog.view), `variants.sync`,
   `variants.update`, `variants.remove` (catalog.edit — variant rows are
   product-document matrix entries, so row-level changes ride the edit
-  ladder like the sync that manages them) (PH1-09).
+  ladder like the sync that manages them) (PH1-09);
+  `customers.list` / `customers.get` / `customers.options`
+  (sales.view — options returns active currencies, active tax groups,
+  and the company base currency, so a sales user does not need
+  settings.view), `customers.create` (sales.create — warehouse cannot
+  open an account), `customers.update`, `customers.addContact` /
+  `customers.updateContact` / `customers.removeContact`,
+  `customers.addAddress` / `customers.updateAddress` /
+  `customers.removeAddress`, `customers.addNote` (sales.edit —
+  warehouse can maintain contacts, addresses, and notes; accountant
+  is read-only). There is no delete: close the account. Notes are
+  append-only (PH2-01).
+  `customerGroups.list` / `customerGroups.get` (sales.view — `get`
+  includes the companies on that tier), `customerGroups.create`
+  (sales.create — warehouse cannot open a tier), `customerGroups.update`
+  (sales.edit — rename or deactivate; there is no delete). Assigning a
+  company is `customers.create` / `customers.update` via `groupId`. An
+  inactive tier cannot be newly chosen. A company already on it may
+  stay (PH2-02).
+  `vendors.list` / `vendors.get` / `vendors.options` (procurement.view —
+  options returns active currencies, active tax groups, and the company
+  base currency, so a procurement user does not need settings.view;
+  sales can read), `vendors.create` (procurement.create — warehouse can
+  open a vendor; accountant and sales cannot), `vendors.update`,
+  `vendors.addContact` / `vendors.updateContact` /
+  `vendors.removeContact`, `vendors.addAddress` /
+  `vendors.updateAddress` / `vendors.removeAddress` (procurement.edit —
+  accountant can maintain the header, contacts, and addresses;
+  warehouse cannot). There is no delete: mark the vendor inactive.
+  License number, jurisdiction, and expiry are stored; a past expiry
+  is allowed, and Phase 5 (PH5-12) is what refuses it (PH2-03).
+  `requisitions.list` / `requisitions.get` and `purchaseOrders.list` /
+  `purchaseOrders.get` (procurement.view — sales can read),
+  `requisitions.create` / `requisitions.update` (procurement.create —
+  warehouse can request and fix a draft; accountant and sales cannot),
+  `requisitions.approve` / `requisitions.reject` / `requisitions.convert`
+  (procurement.approve — owner and admin only). Approval is the role.
+  The requester may approve their own request when they hold approve.
+  Convert writes one draft purchase order and leaves stock where it is
+  (PH2-20).
+  `purchaseOrders.updateExpectedDate` / `purchaseOrders.updateLine` /
+  `purchaseOrders.addLine` / `purchaseOrders.removeLine`
+  (procurement.edit — accountant can change a draft; warehouse cannot),
+  `purchaseOrders.send` (procurement.approve — owner and admin). Send
+  freezes the agreed price and the vendor's tax and marks the order
+  sent. It does not move stock and it does not email. A receipt moves
+  sent to partially received or received (PH2-22). A vendor bill marks
+  a received order billed (PH2-23). The PDF is downloaded in the
+  browser (PH2-21).
+  `purchaseReceipts.receive` (inventory.create — warehouse can receive;
+  sales and accountant cannot). Accepted quantity posts a stock receipt
+  at the agreed unit price and stores the moving average on the receipt
+  line. Rejected quantity is recorded and does not enter stock. The
+  accepted total moves a sent order to partially received or received.
+  A receipt that only rejects leaves the status. Serials and lots can
+  be named; their picker is Phase 5 (PH2-22).
+  `vendorBills.list` / `vendorBills.get` / `vendorBills.forPurchaseOrder`
+  (procurement.view — sales can read), `vendorBills.create` /
+  `vendorBills.createFromPurchaseOrder` / `vendorBills.updateLine`
+  (procurement.edit — accountant can record a bill and edit it while it
+  is open; warehouse and sales cannot), `vendorBills.match`
+  (finance.post — accountant, owner, and admin). A bill from a purchase
+  order copies the accepted quantity and the agreed price, and only a
+  received order can be billed. Match writes one pending `vendorBill`
+  journal intent and marks that order billed. Billed quantity must equal
+  received quantity. A unit price within 2% of the agreed price passes;
+  a wider gap blocks the match. Ordered versus received is a warning and
+  does not block. A standalone bill has nothing to compare. Paid is a
+  status and is never set. Recording a payment is Phase 3 (PH2-23).
+  `purchaseReturns.list` / `purchaseReturns.get` /
+  `purchaseReturns.forReceipt` (procurement.view — sales can read),
+  `purchaseReturns.create` (inventory.create — warehouse can return
+  goods that a receipt put on hand; sales and accountant cannot). Each
+  line posts a stock issue at that receipt line's unit cost. The
+  document number (`DBN-`) is the debit note reference. Rejected
+  quantity cannot be returned, and reserved stock stays. The receipt,
+  the purchase order, and the vendor's received total stay as they
+  were. Posting writes one pending `debitNote` journal intent at the
+  receipt line's unit cost. A missing cost is an amount of zero, so the
+  return is still on the backlog. The vendor's credit is Phase 3
+  (PH2-24).
+  `journalIntents.list` (finance.view — sales, accountant, owner, and
+  admin can read the backlog; warehouse cannot). A goods receipt that
+  puts stock on hand writes one pending `goodsReceipt` intent. A
+  rejection-only receipt writes none. A manual stock adjustment writes
+  one pending `stockAdjustment` intent, signed with the quantity. A
+  sales-return write-off is not that adjustment: the receipt and the
+  removal net to zero, and the credit note is the posting. Payments
+  and the posting engine stay Phase 3 (PH2-26).
+  `desk.get` (procurement.view — sales can read). One query feeds the
+  four tiles at `/procurement`. Open is a purchase order that is not
+  billed. Overdue is sent or partially received with an expected date
+  before today. Receipts pending is quantity still to accept on those
+  orders. Bills pending match are open vendor bills. A received order
+  with no bill is not in that queue (PH2-25).
+  `productVendors.listForProduct` / `productVendors.listForVendor`
+  (catalog.view), `productVendors.link` / `productVendors.update` /
+  `productVendors.remove` (catalog.edit — sales can maintain the link;
+  warehouse and accountant cannot). There is no separate delete
+  permission: unlinking rides edit. A new link to an inactive vendor
+  is refused. Last purchase price is not an argument. A goods receipt
+  that names the vendor (`goodsReceipts.create`, inventory.create)
+  writes it onto an existing link when the line has a unit cost, and
+  records a `productVendors` / `purchase` audit. A receipt does not
+  create the link (PH2-04).
+  `customers.statement` (sales.view — balance is invoices less credits
+  and payments; those documents are not posted yet, so the balance is
+  zero and the document list is empty; available credit is the limit
+  minus the balance, and a missing limit is no cap).
+  `vendors.statement` (procurement.view — goods receipts that name the
+  vendor, newest first; a line with no unit cost adds nothing to the
+  received total; bills are not included) (PH2-05).
+  `prices.listLists` / `prices.getList` / `prices.listGroupPrices` /
+  `prices.listCustomerPrices` / `prices.listPromotions` (sales.view —
+  warehouse and accountant can read). `prices.createList` /
+  `prices.updateList`, `prices.setListPrice` / `prices.removeListPrice`,
+  `prices.setGroupPrice` / `prices.removeGroupPrice`,
+  `prices.setCustomerPrice` / `prices.removeCustomerPrice`,
+  `prices.setBreak` / `prices.removeBreak`, `prices.createPromotion` /
+  `prices.updatePromotion` (sales.create — every price write, including
+  a change or a removal, so warehouse's sales.edit cannot change a
+  price; accountant cannot write). A list and a promotion are
+  deactivated, never deleted. Deactivating the base promotes the oldest
+  other list; the only list stays the base. A new price on an inactive list, an
+  inactive group, or a closed customer is refused. A quantity break
+  hangs off one existing price and starts at a quantity of 2 (PH2-06).
+  `prices.resolvePrice` (sales.view — customer price, then the customer's
+  group price, then a list price; a quantity break applies only to the
+  winning row; the unit price rounds to the currency's decimal places;
+  no match is a null unit price; a closed customer and an inactive
+  group still resolve) (PH2-07).
+  `prices.currencyChoices` (sales.view — currency codes and decimal
+  places, without settings access). `prices.linePreview` (sales.view —
+  the same winner as `resolvePrice`, then the line total and the margin
+  against the product's display cost; a missing cost or a unit that is
+  not above zero leaves the margin null) (PH2-09).
+  `priceOverrides.get` / `priceOverrides.listPending` (sales.view).
+  `priceOverrides.propose` (sales.create — a typed price or a percent
+  off the resolved unit, with a reason; above a 10% discount the row
+  waits). `priceOverrides.confirm` (sales.approve — a second person;
+  the requester cannot confirm their own; a rejection needs a reason)
+  (PH2-08).
+  The cross of those tiers, quantity breaks, and overrides is
+  `tests/pricingMatrix.test.ts`. CI runs it with the rest of the suite
+  (PH2-10).
+  `quotes.list` / `quotes.get` and `orders.list` / `orders.get`
+  (sales.view). `quotes.create`, `quotes.update`, `quotes.addLine`,
+  `quotes.removeLine`, `quotes.setDiscount`, `quotes.clearDiscount`,
+  `quotes.send`, `quotes.accept`, `quotes.reject`, `quotes.expire`, and
+  `quotes.convert` (sales.create — warehouse's sales.edit cannot change
+  a quote). A discount on a quote line is the same override as
+  `priceOverrides`: above 10% it waits, and `priceOverrides.confirm`
+  then updates the line. Accept converts once into a draft sales order
+  and copies the charged lines and prices (PH2-11).
+  `orders.get` also returns today's price, the margin on the charged
+  unit, and availability at the order's warehouse — or at the
+  warehouse passed in while the order is still a draft (PH2-13).
+  `orders.confirm`, `orders.invoice`, `orders.close`, and
+  `orders.cancel` (sales.create — warehouse cannot commit an order).
+  Confirm reserves free stock at one warehouse; a short line is
+  `backorder` and the order still confirms. Cancel releases whatever
+  is still reserved. Invoice waits until every line has shipped.
+  `orders.reserve` and `orders.fulfill` (sales.edit — warehouse
+  fulfillment). Reserve tops up a backorder. Fulfill allocates that
+  quantity (release + issue) and can be less than the line. It
+  refuses quantity already claimed by a packed slip. A customer's
+  statement lists the order and does not change the balance (PH2-12).
+  `deliveries.list` / `deliveries.get` / `deliveries.forOrder` /
+  `deliveries.pickList` (sales.view — the pick list groups what is
+  still reserved, by warehouse). `deliveries.pack`, `deliveries.ship`,
+  and `deliveries.cancel` (sales.edit — warehouse can pack and ship;
+  an accountant cannot). Pack claims reserved quantity and posts
+  nothing. Ship is the goods issue, keeps the unit cost, and writes
+  one pending `journalIntents` row of type `cogs`. A packed slip
+  cancels without an issue. Quantity that already left cannot be
+  packed. The statement lists the delivery at the selling price of
+  its lines and does not change the balance (PH2-14).
+  `deliveries.get` also returns the ship-to. The packing-slip PDF and
+  the pick-list PDF are built in the browser from that query and
+  `deliveries.pickList`, so they need no extra permission. The slip
+  does not print the unit cost (PH2-15).
+  `invoices.list` / `invoices.get` / `invoices.forOrder` /
+  `invoices.forDelivery` (sales.view). `invoices.createFromOrder`,
+  `invoices.createFromDelivery`, `invoices.post`, `invoices.voidInvoice`,
+  and `invoices.markPaid` (sales.create — warehouse cannot invoice).
+  A draft copies shipped quantity, the charged price, and the tax.
+  Posting writes one pending `journalIntents` row of type
+  `salesInvoice` and, once every line has shipped and been billed,
+  marks the order invoiced. Void is draft only. Marking paid does not
+  record a payment, so the statement balance still includes it
+  (PH2-16).
+  `creditNotes.list` / `creditNotes.get` / `creditNotes.forInvoice`
+  (sales.view). `creditNotes.create`, `creditNotes.post`, and
+  `creditNotes.voidCredit` (sales.create — warehouse cannot credit).
+  A note reduces a posted or paid invoice. A return may restock into
+  the order's warehouse. An adjustment does not. Posting writes one
+  pending `journalIntents` row of type `creditNote`. A posted note
+  lowers the statement balance. Void is draft only (PH2-17).
+  `salesReturns.list` / `salesReturns.get` / `salesReturns.forInvoice` /
+  `salesReturns.forOrder` (sales.view). `salesReturns.createFromInvoice`,
+  `salesReturns.createFromOrder`, `salesReturns.receive`,
+  `salesReturns.credit`, `salesReturns.exchange`, and
+  `salesReturns.cancel` (sales.create — warehouse cannot open or
+  receive a return). A request names lines and a quantity from a
+  posted invoice or a shipped order. Receiving inspects each line:
+  restock puts it back, quarantine holds it, and a write-off receipts
+  it and removes it. Credit posts one `creditNote` intent and lowers
+  the balance. Exchange opens a draft order and does not. Cancel is
+  only while the return is still a request (PH2-18).
+  `desk.get` (sales.view). The order desk counts open orders, reserved
+  quantity still to pick, packed slips still to ship, shipped quantity
+  still to bill plus draft invoices, and returns that are requested or
+  received. It does not write (PH2-19).
+  `docFlow.get` (sales.view — warehouse can read it on a delivery). One
+  query feeds the quote, order, delivery, invoice, and payment trail
+  on each of those documents, and on a credit note or a return. A void
+  invoice, a cancelled delivery, and a cancelled return stay off the
+  trail unless that page is the one open. Payment is named and has no
+  document until Phase 3 (PH2-27).
   Pricing visibility (PH1-10): prices ride the existing
   `products.create`/`products.update` (no new gate), and every role that
   can view the catalog sees `listPrice`/`costPrice`/margin in the admin —

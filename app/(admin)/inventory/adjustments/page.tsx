@@ -131,7 +131,11 @@ export default function AdjustmentsPage() {
         aria-label="Product"
         label="Product"
         placeholder="Choose a product"
-        items={(products ?? []).map((row) => ({ id: row._id, label: `${row.name} · ${row.sku}` }))}
+        items={(products ?? []).map((row) => ({
+          id: row._id,
+          label: `${row.name} · ${row.sku}`,
+          avatarUrl: row.coverUrl ?? undefined,
+        }))}
         value={productId}
         onChange={(key) => {
           setProductId(key == null ? "" : String(key));
@@ -140,7 +144,7 @@ export default function AdjustmentsPage() {
         isDisabled={!canApprove}
       >
         {(item) => (
-          <Select.Item id={item.id} key={item.id}>
+          <Select.Item id={item.id} key={item.id} avatarUrl={item.avatarUrl}>
             {item.label}
           </Select.Item>
         )}

@@ -2,6 +2,16 @@ import { authTables } from "@convex-dev/auth/server";
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 
+/** A postal address copied onto a document. Later edits to the master do not rewrite it. */
+const documentAddress = v.object({
+  line1: v.string(),
+  line2: v.optional(v.string()),
+  city: v.string(),
+  region: v.optional(v.string()),
+  postalCode: v.optional(v.string()),
+  country: v.string(),
+});
+
 /**
  * Foundation schema (Phase 0). Domain tables (catalog, inventory, sales, …)
  * are added progressively — see docs/development-plan.md.
@@ -808,11 +818,10 @@ export default defineSchema({
   }).index("by_transfer", ["transferId"]),
 
   /**
-   * Manual goods receipt (PH1-22). One posted document: the reference
-   * note says where the goods came from (a delivery note, an opening
-   * balance), and each line is a `receipt` on the ledger. Nothing here
-   * links a purchase order — that receiving flow is PH2-22. The document
-   * is not edited; a correction is another movement.
+   * Goods receipt. A manual intake (PH1-22) names a reference note and
+   * posts one ledger receipt per line. A purchase-order receipt (PH2-22)
+   * sets `purchaseOrderId` and records accepted and rejected quantities.
+   * The document is not edited; a correction is another movement.
    */
   goodsReceipts: defineTable({
     /** `GRN-0007` from the `goodsReceipt` sequence. */
@@ -820,10 +829,20 @@ export default defineSchema({
     warehouseId: v.id("warehouses"),
     /** Required. Blank is refused. */
     referenceNote: v.string(),
+    /**
+     * Who supplied the goods, when the intake names them (PH2-04).
+     * A unit cost on a line then updates that product↔vendor link's
+     * last purchase price. Absent on a manual intake that has no vendor.
+     */
+    vendorId: v.optional(v.id("vendors")),
+    /** Set when the intake is against a purchase order (PH2-22). */
+    purchaseOrderId: v.optional(v.id("purchaseOrders")),
     createdAt: v.number(),
   })
     .index("by_number", ["number"])
-    .index("by_warehouse", ["warehouseId", "createdAt"]),
+    .index("by_warehouse", ["warehouseId", "createdAt"])
+    .index("by_vendor", ["vendorId", "createdAt"])
+    .index("by_purchase_order", ["purchaseOrderId", "createdAt"]),
 
   goodsReceiptLines: defineTable({
     receiptId: v.id("goodsReceipts"),
@@ -831,11 +850,54 @@ export default defineSchema({
     variantId: v.optional(v.id("variants")),
     lotId: v.optional(v.id("lots")),
     serialIds: v.array(v.id("serials")),
+    /** Quantity that entered stock. For a purchase-order line this is the accepted quantity. */
     qty: v.number(),
     unitCost: v.optional(v.number()),
-    /** The ledger row this line posted. */
-    movementId: v.id("stockMovements"),
+    /** The purchase-order line this intake fulfills (PH2-22). */
+    purchaseOrderLineId: v.optional(v.id("purchaseOrderLines")),
+    qtyAccepted: v.optional(v.number()),
+    qtyRejected: v.optional(v.number()),
+    /** Moving average at this warehouse after the accepted quantity landed. */
+    averageCost: v.optional(v.number()),
+    /** The ledger row this line posted. Absent when nothing was accepted. */
+    movementId: v.optional(v.id("stockMovements")),
   }).index("by_receipt", ["receiptId"]),
+
+  /**
+   * Purchase return to a vendor (PH2-24). One debit note, numbered
+   * `DBN-`, for quantity that already entered on a goods receipt.
+   * Each line posts a stock issue at the receipt's unit cost. The
+   * debit note number is the reference. A journal intent waits for
+   * PH2-26. The receipt and the purchase order stay as they were.
+   */
+  purchaseReturns: defineTable({
+    /** `DBN-0007` from the `debitNote` sequence. This is the debit note reference. */
+    docNumber: v.string(),
+    goodsReceiptId: v.id("goodsReceipts"),
+    vendorId: v.optional(v.id("vendors")),
+    warehouseId: v.id("warehouses"),
+    reason: v.string(),
+    createdAt: v.number(),
+  })
+    .index("by_number", ["docNumber"])
+    .index("by_receipt", ["goodsReceiptId", "createdAt"])
+    .index("by_vendor", ["vendorId", "createdAt"]),
+
+  /** Quantity sent back from one receipt line, and the issue that took it out. */
+  purchaseReturnLines: defineTable({
+    purchaseReturnId: v.id("purchaseReturns"),
+    goodsReceiptLineId: v.id("goodsReceiptLines"),
+    productId: v.id("products"),
+    variantId: v.optional(v.id("variants")),
+    description: v.string(),
+    sku: v.string(),
+    qty: v.number(),
+    unitCost: v.optional(v.number()),
+    movementId: v.id("stockMovements"),
+    createdAt: v.number(),
+  })
+    .index("by_return", ["purchaseReturnId"])
+    .index("by_receipt_line", ["goodsReceiptLineId"]),
 
   /**
    * Reorder point (PH1-24). One row per product, or per product at one
@@ -857,6 +919,920 @@ export default defineSchema({
    * once available rises above it. A slice that stays low is not
    * notified again.
    */
+  /**
+   * Customer groups (PH2-02). A tier such as Retail, Wholesale, or
+   * Institutional. `nameKey` is the trimmed lowercase name, so
+   * "Wholesale" and "wholesale" are the same group. A group is
+   * deactivated, never deleted, while customers may still name it.
+   * A customer has at most one group.
+   */
+  customerGroups: defineTable({
+    name: v.string(),
+    nameKey: v.string(),
+    active: v.boolean(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_name_key", ["nameKey"]),
+
+  /**
+   * Customer master (PH2-01). One company. Contacts, addresses, and
+   * the notes timeline are their own tables. `status` is the account:
+   * active, on hold (no new credit sales once orders exist), or closed.
+   * `paymentTermsDays` is whole days until due; zero is due on receipt.
+   * A missing `creditLimit` means no cap. `currency` is an ISO code
+   * from the currency catalog. A missing `groupId` means no tier.
+   */
+  customers: defineTable({
+    code: v.string(),
+    name: v.string(),
+    status: v.union(v.literal("active"), v.literal("onHold"), v.literal("closed")),
+    paymentTermsDays: v.number(),
+    taxGroupId: v.optional(v.id("taxGroups")),
+    groupId: v.optional(v.id("customerGroups")),
+    currency: v.string(),
+    creditLimit: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_code", ["code"])
+    .index("by_status", ["status"])
+    .index("by_group", ["groupId"]),
+
+  /** People at a customer. At most one row is the primary contact. */
+  customerContacts: defineTable({
+    customerId: v.id("customers"),
+    name: v.string(),
+    email: v.optional(v.string()),
+    phone: v.optional(v.string()),
+    jobTitle: v.optional(v.string()),
+    isPrimary: v.boolean(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_customer", ["customerId"]),
+
+  /**
+   * Bill-to and ship-to addresses. The two default flags are
+   * independent: one address may be both, and each flag is unique
+   * per customer.
+   */
+  customerAddresses: defineTable({
+    customerId: v.id("customers"),
+    line1: v.string(),
+    line2: v.optional(v.string()),
+    city: v.string(),
+    region: v.optional(v.string()),
+    postalCode: v.optional(v.string()),
+    country: v.string(),
+    isDefaultBill: v.boolean(),
+    isDefaultShip: v.boolean(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_customer", ["customerId"]),
+
+  /**
+   * Notes timeline. Append-only: a correction is another note.
+   * `authorId` is the staff user who wrote it.
+   */
+  customerNotes: defineTable({
+    customerId: v.id("customers"),
+    body: v.string(),
+    authorId: v.id("users"),
+    createdAt: v.number(),
+  }).index("by_customer", ["customerId", "createdAt"]),
+
+  /**
+   * Vendor master (PH2-03). One company we buy from. Contacts and
+   * addresses are their own tables. `active` false keeps the row;
+   * there is no hard delete. License number, jurisdiction, and expiry
+   * are stored here. Phase 5 is what refuses an expired license.
+   * `paymentTermsDays` is whole days until we pay; zero is due on
+   * receipt. `currency` is an ISO code from the currency catalog.
+   */
+  vendors: defineTable({
+    code: v.string(),
+    name: v.string(),
+    active: v.boolean(),
+    paymentTermsDays: v.number(),
+    taxGroupId: v.optional(v.id("taxGroups")),
+    taxNumber: v.optional(v.string()),
+    currency: v.string(),
+    licenseNumber: v.optional(v.string()),
+    licenseJurisdiction: v.optional(v.string()),
+    licenseExpiresOn: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_code", ["code"])
+    .index("by_active", ["active"]),
+
+  /** People at a vendor. At most one row is the primary contact. */
+  vendorContacts: defineTable({
+    vendorId: v.id("vendors"),
+    name: v.string(),
+    email: v.optional(v.string()),
+    phone: v.optional(v.string()),
+    jobTitle: v.optional(v.string()),
+    isPrimary: v.boolean(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_vendor", ["vendorId"]),
+
+  /**
+   * Remit-to and ship-from addresses. The two default flags are
+   * independent: one address may be both, and each flag is unique
+   * per vendor.
+   */
+  vendorAddresses: defineTable({
+    vendorId: v.id("vendors"),
+    line1: v.string(),
+    line2: v.optional(v.string()),
+    city: v.string(),
+    region: v.optional(v.string()),
+    postalCode: v.optional(v.string()),
+    country: v.string(),
+    isDefaultRemit: v.boolean(),
+    isDefaultShip: v.boolean(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_vendor", ["vendorId"]),
+
+  /**
+   * Product↔vendor link (PH2-04). A product may name several vendors.
+   * Exactly one of its links is preferred. `vendorSku` is the supplier's
+   * code. `lastPurchasePrice` is written by a goods receipt for this
+   * vendor, never typed. A missing price means no receipt has costed
+   * the product from this vendor yet. Deleting the product removes
+   * these rows. The vendor itself is not deleted.
+   */
+  productVendors: defineTable({
+    productId: v.id("products"),
+    vendorId: v.id("vendors"),
+    vendorSku: v.optional(v.string()),
+    preferred: v.boolean(),
+    lastPurchasePrice: v.optional(v.number()),
+    lastPurchaseAt: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_product", ["productId"])
+    .index("by_vendor", ["vendorId"])
+    .index("by_product_vendor", ["productId", "vendorId"]),
+
+  /**
+   * Internal request to buy (PH2-20). The requester is the signed-in
+   * user. Approval is role-gated (`procurement.approve`), not a money
+   * threshold — the rules engine is Phase 6. Converting an approved
+   * request creates one draft purchase order. Rejected is terminal.
+   */
+  requisitions: defineTable({
+    docNumber: v.string(),
+    requesterId: v.id("users"),
+    /** UTC midnight. The date the goods are needed by. */
+    needBy: v.number(),
+    note: v.optional(v.string()),
+    status: v.union(v.literal("draft"), v.literal("approved"), v.literal("rejected")),
+    approvedBy: v.optional(v.id("users")),
+    approvedAt: v.optional(v.number()),
+    rejectedBy: v.optional(v.id("users")),
+    rejectedAt: v.optional(v.number()),
+    rejectReason: v.optional(v.string()),
+    purchaseOrderId: v.optional(v.id("purchaseOrders")),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_number", ["docNumber"])
+    .index("by_status", ["status"])
+    .index("by_requester", ["requesterId"]),
+
+  /** One requested product. A product with variants must name one. */
+  requisitionLines: defineTable({
+    requisitionId: v.id("requisitions"),
+    productId: v.id("products"),
+    variantId: v.optional(v.id("variants")),
+    description: v.string(),
+    sku: v.string(),
+    qty: v.number(),
+    unitPrice: v.number(),
+    sort: v.number(),
+    createdAt: v.number(),
+  }).index("by_requisition", ["requisitionId"]),
+
+  /**
+   * Purchase order (PH2-20 drafts it from a requisition; PH2-21 is the
+   * document). `sent` freezes the agreed price and tax. A receipt
+   * (PH2-22) sets partially received or received. A vendor bill
+   * (PH2-23) sets billed. Email waits for Phase 4.
+   */
+  purchaseOrders: defineTable({
+    docNumber: v.string(),
+    vendorId: v.id("vendors"),
+    requisitionId: v.id("requisitions"),
+    status: v.union(
+      v.literal("draft"),
+      v.literal("sent"),
+      v.literal("partiallyReceived"),
+      v.literal("received"),
+      v.literal("billed"),
+    ),
+    currency: v.string(),
+    decimalPlaces: v.number(),
+    /** UTC midnight. Copied from the requisition, editable while draft. */
+    expectedDate: v.number(),
+    sentAt: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_number", ["docNumber"])
+    .index("by_vendor", ["vendorId"])
+    .index("by_requisition", ["requisitionId"])
+    .index("by_status", ["status"]),
+
+  /**
+   * One ordered product. `unitPrice` is the agreed price. Tax fields
+   * are snapshotted from the vendor's tax group; a row written before
+   * that snapshot (PH2-20) leaves them empty until the order is edited
+   * or sent.
+   */
+  purchaseOrderLines: defineTable({
+    purchaseOrderId: v.id("purchaseOrders"),
+    requisitionLineId: v.optional(v.id("requisitionLines")),
+    productId: v.id("products"),
+    variantId: v.optional(v.id("variants")),
+    description: v.string(),
+    sku: v.string(),
+    qty: v.number(),
+    unitPrice: v.number(),
+    taxCategory: v.optional(
+      v.union(v.literal("standard"), v.literal("reduced"), v.literal("zero"), v.literal("exempt")),
+    ),
+    taxRateId: v.optional(v.id("taxRates")),
+    rateBps: v.optional(v.number()),
+    inclusive: v.optional(v.boolean()),
+    net: v.optional(v.number()),
+    tax: v.optional(v.number()),
+    gross: v.optional(v.number()),
+    sort: v.number(),
+    createdAt: v.number(),
+  }).index("by_order", ["purchaseOrderId"]),
+
+  /**
+   * Vendor bill (PH2-23). Recorded from a received purchase order or
+   * on its own. `open` can be edited. Matching writes a `vendorBill`
+   * journal intent and, when the bill names an order, marks that order
+   * billed. `paid` is reserved for the payment in Phase 3.
+   */
+  vendorBills: defineTable({
+    docNumber: v.string(),
+    vendorId: v.id("vendors"),
+    purchaseOrderId: v.optional(v.id("purchaseOrders")),
+    status: v.union(v.literal("open"), v.literal("matched"), v.literal("paid")),
+    currency: v.string(),
+    decimalPlaces: v.number(),
+    /** UTC midnight. */
+    billDate: v.number(),
+    /** The vendor's own invoice number, when they sent one. */
+    reference: v.optional(v.string()),
+    matchedAt: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_number", ["docNumber"])
+    .index("by_vendor", ["vendorId", "createdAt"])
+    .index("by_purchase_order", ["purchaseOrderId"])
+    .index("by_status", ["status"]),
+
+  vendorBillLines: defineTable({
+    vendorBillId: v.id("vendorBills"),
+    purchaseOrderLineId: v.optional(v.id("purchaseOrderLines")),
+    productId: v.id("products"),
+    variantId: v.optional(v.id("variants")),
+    description: v.string(),
+    sku: v.string(),
+    qty: v.number(),
+    unitPrice: v.number(),
+    taxCategory: v.union(
+      v.literal("standard"),
+      v.literal("reduced"),
+      v.literal("zero"),
+      v.literal("exempt"),
+    ),
+    taxRateId: v.optional(v.id("taxRates")),
+    rateBps: v.number(),
+    inclusive: v.boolean(),
+    net: v.number(),
+    tax: v.number(),
+    gross: v.number(),
+    sort: v.number(),
+    createdAt: v.number(),
+  }).index("by_bill", ["vendorBillId"]),
+
+  /**
+   * A sell-price list (PH2-06). One list is the base. The first list
+   * becomes the base, and retiring the base promotes the oldest other
+   * list. A list is deactivated, never deleted. `currency` is an ISO
+   * code; it cannot change once the list has a price. `nameKey` is the
+   * trimmed lowercase name.
+   */
+  priceLists: defineTable({
+    name: v.string(),
+    nameKey: v.string(),
+    currency: v.string(),
+    active: v.boolean(),
+    isBase: v.boolean(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_name_key", ["nameKey"])
+    .index("by_base", ["isBase"]),
+
+  /**
+   * One product price on a list. A missing `variantId` is the product
+   * itself; a present one must be that product's variant. The currency
+   * is the list's. Deleting the product removes these rows.
+   */
+  priceListPrices: defineTable({
+    priceListId: v.id("priceLists"),
+    productId: v.id("products"),
+    variantId: v.optional(v.id("variants")),
+    price: v.number(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_list", ["priceListId"])
+    .index("by_list_product", ["priceListId", "productId"])
+    .index("by_product", ["productId"]),
+
+  /**
+   * A price for one customer group, in one currency. The same product
+   * may have a row per currency. A missing `variantId` is the product.
+   * An inactive group keeps the rows it already has.
+   */
+  customerGroupPrices: defineTable({
+    customerGroupId: v.id("customerGroups"),
+    productId: v.id("products"),
+    variantId: v.optional(v.id("variants")),
+    currency: v.string(),
+    price: v.number(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_group", ["customerGroupId"])
+    .index("by_group_product", ["customerGroupId", "productId"])
+    .index("by_product", ["productId"]),
+
+  /**
+   * A price for one customer, in one currency. A closed customer keeps
+   * the rows it already has. A missing `variantId` is the product.
+   */
+  customerPrices: defineTable({
+    customerId: v.id("customers"),
+    productId: v.id("products"),
+    variantId: v.optional(v.id("variants")),
+    currency: v.string(),
+    price: v.number(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_customer", ["customerId"])
+    .index("by_customer_product", ["customerId", "productId"])
+    .index("by_product", ["productId"]),
+
+  /**
+   * A volume break (PH2-06): from `minQty` units, the unit price is
+   * `price`. Qty 1 is the parent row, so `minQty` is at least 2. The
+   * break hangs off exactly one list, group, or customer price, and
+   * that row's currency is the break's currency. Deleting the parent
+   * price removes its breaks.
+   */
+  quantityBreaks: defineTable({
+    scope: v.union(v.literal("list"), v.literal("group"), v.literal("customer")),
+    priceListPriceId: v.optional(v.id("priceListPrices")),
+    customerGroupPriceId: v.optional(v.id("customerGroupPrices")),
+    customerPriceId: v.optional(v.id("customerPrices")),
+    productId: v.id("products"),
+    variantId: v.optional(v.id("variants")),
+    minQty: v.number(),
+    price: v.number(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_list_price", ["priceListPriceId"])
+    .index("by_group_price", ["customerGroupPriceId"])
+    .index("by_customer_price", ["customerPriceId"])
+    .index("by_product", ["productId"]),
+
+  /**
+   * A dated promotion hook (PH2-06). The window is stored. When two
+   * overlap, `resolvePrice` keeps the one that started latest, then
+   * the one created latest. `priceListId` points at the list in effect
+   * during the window; a missing one means the window is recorded and
+   * not aimed at a list yet. Deactivate, never delete. A past window
+   * is a valid record.
+   */
+  promotions: defineTable({
+    name: v.string(),
+    nameKey: v.string(),
+    startsOn: v.number(),
+    endsOn: v.number(),
+    active: v.boolean(),
+    priceListId: v.optional(v.id("priceLists")),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_list", ["priceListId"]),
+
+  /**
+   * A manual price on a sales-document line (PH2-08). The line tables
+   * arrive with the documents (PH2-11+); `documentId` and `lineId` are
+   * those ids, stored as text until then. One row per line. A discount
+   * above the threshold is `pending` until a second person confirms it.
+   * The person who asked cannot confirm their own.
+   */
+  priceOverrides: defineTable({
+    documentKind: v.union(
+      v.literal("quote"),
+      v.literal("salesOrder"),
+      v.literal("invoice"),
+      v.literal("creditNote"),
+    ),
+    documentId: v.string(),
+    lineId: v.string(),
+    currency: v.string(),
+    resolvedUnitPrice: v.optional(v.number()),
+    mode: v.union(v.literal("price"), v.literal("discount")),
+    manualPrice: v.optional(v.number()),
+    requestedDiscountPercent: v.optional(v.number()),
+    /** Achieved discount after rounding. Absent when there was no resolved price. */
+    discountPercent: v.optional(v.number()),
+    unitPrice: v.number(),
+    needsApproval: v.boolean(),
+    status: v.union(
+      v.literal("applied"),
+      v.literal("pending"),
+      v.literal("approved"),
+      v.literal("rejected"),
+    ),
+    reason: v.string(),
+    requestedBy: v.id("users"),
+    decidedBy: v.optional(v.id("users")),
+    decidedAt: v.optional(v.number()),
+    decisionNote: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_line", ["documentKind", "documentId", "lineId"])
+    .index("by_status", ["status"]),
+
+  /**
+   * A quote (PH2-11). The number comes from the `quote` sequence.
+   * Status moves draft → sent → accepted, and either open state can
+   * be rejected or expired. Accepted converts once, into a draft
+   * sales order that keeps these lines and prices. Addresses, terms,
+   * currency, and tax are copied onto the document so a later change
+   * to the customer does not rewrite the quote.
+   */
+  quotes: defineTable({
+    docNumber: v.string(),
+    customerId: v.id("customers"),
+    status: v.union(
+      v.literal("draft"),
+      v.literal("sent"),
+      v.literal("accepted"),
+      v.literal("rejected"),
+      v.literal("expired"),
+    ),
+    currency: v.string(),
+    decimalPlaces: v.number(),
+    /** UTC midnight. */
+    quoteDate: v.number(),
+    /** UTC midnight. The quote is valid through this day. */
+    validUntil: v.number(),
+    paymentTermsDays: v.number(),
+    taxGroupId: v.optional(v.id("taxGroups")),
+    billTo: v.optional(documentAddress),
+    shipTo: v.optional(documentAddress),
+    notes: v.optional(v.string()),
+    salesOrderId: v.optional(v.id("salesOrders")),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_customer", ["customerId"])
+    .index("by_status", ["status"])
+    .index("by_number", ["docNumber"]),
+
+  /**
+   * One quoted product. `unitPrice` is what the line charges now
+   * (the resolved price until a discount is applied or approved).
+   * Tax rate and amounts are stored so a later tax-rate edit does
+   * not change this quote.
+   */
+  quoteLines: defineTable({
+    quoteId: v.id("quotes"),
+    productId: v.id("products"),
+    variantId: v.optional(v.id("variants")),
+    description: v.string(),
+    sku: v.string(),
+    qty: v.number(),
+    resolvedUnitPrice: v.number(),
+    /** The discount asked for. Zero when the line charges the resolved price. */
+    discountPercent: v.number(),
+    unitPrice: v.number(),
+    taxCategory: v.union(
+      v.literal("standard"),
+      v.literal("reduced"),
+      v.literal("zero"),
+      v.literal("exempt"),
+    ),
+    taxRateId: v.optional(v.id("taxRates")),
+    rateBps: v.number(),
+    inclusive: v.boolean(),
+    net: v.number(),
+    tax: v.number(),
+    gross: v.number(),
+    sort: v.number(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_quote", ["quoteId"]),
+
+  /**
+   * A sales order opened from a quote (PH2-11, PH2-12). Lines and
+   * prices are copied; they are not priced again. Confirming picks
+   * one warehouse and reserves what is free. A short line stays
+   * `backorder`. Shipping turns that reservation into an issue.
+   * `warehouseId` is absent until the order is confirmed.
+   */
+  salesOrders: defineTable({
+    docNumber: v.string(),
+    customerId: v.id("customers"),
+    quoteId: v.id("quotes"),
+    status: v.union(
+      v.literal("draft"),
+      v.literal("confirmed"),
+      v.literal("fulfilling"),
+      v.literal("invoiced"),
+      v.literal("closed"),
+      v.literal("cancelled"),
+    ),
+    /** `storefront` is written by the shop later. Staff orders are `manual`. */
+    channel: v.union(v.literal("manual"), v.literal("storefront")),
+    currency: v.string(),
+    decimalPlaces: v.number(),
+    paymentTermsDays: v.number(),
+    warehouseId: v.optional(v.id("warehouses")),
+    billTo: v.optional(documentAddress),
+    shipTo: v.optional(documentAddress),
+    notes: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_customer", ["customerId"])
+    .index("by_quote", ["quoteId"])
+    .index("by_number", ["docNumber"])
+    .index("by_status", ["status"]),
+
+  /**
+   * One ordered product. `qty` is what was ordered. `reservedQty` is
+   * still held. `fulfilledQty` has shipped. Older rows omit the three
+   * progress fields; readers treat that as nothing reserved, nothing
+   * shipped, and not on backorder.
+   */
+  salesOrderLines: defineTable({
+    salesOrderId: v.id("salesOrders"),
+    quoteLineId: v.id("quoteLines"),
+    productId: v.id("products"),
+    variantId: v.optional(v.id("variants")),
+    description: v.string(),
+    sku: v.string(),
+    qty: v.number(),
+    unitPrice: v.number(),
+    discountPercent: v.number(),
+    taxCategory: v.union(
+      v.literal("standard"),
+      v.literal("reduced"),
+      v.literal("zero"),
+      v.literal("exempt"),
+    ),
+    taxRateId: v.optional(v.id("taxRates")),
+    rateBps: v.number(),
+    inclusive: v.boolean(),
+    net: v.number(),
+    tax: v.number(),
+    gross: v.number(),
+    reservedQty: v.optional(v.number()),
+    fulfilledQty: v.optional(v.number()),
+    backorder: v.optional(v.boolean()),
+    sort: v.number(),
+    createdAt: v.number(),
+  }).index("by_order", ["salesOrderId"]),
+
+  /**
+   * A packing slip (PH2-14). Packing claims reserved quantity and
+   * does not move stock. Shipping posts the goods issue, keeps the
+   * unit cost, and writes the cost-of-goods journal intent. The
+   * number comes from the `deliveryNote` sequence (`DN-`).
+   * A slip that was packed by mistake is cancelled; a shipped slip
+   * stays, because the goods have left.
+   */
+  deliveries: defineTable({
+    docNumber: v.string(),
+    salesOrderId: v.id("salesOrders"),
+    warehouseId: v.id("warehouses"),
+    status: v.union(v.literal("packed"), v.literal("shipped"), v.literal("cancelled")),
+    carrier: v.optional(v.string()),
+    trackingNumber: v.optional(v.string()),
+    /** UTC midnight of the ship date. Absent until the slip ships. */
+    shippedAt: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_number", ["docNumber"])
+    .index("by_order", ["salesOrderId"])
+    .index("by_status", ["status", "createdAt"])
+    .index("by_warehouse", ["warehouseId", "status"]),
+
+  /**
+   * One packed product. `unitCost` and `movementId` are written when
+   * the goods issue posts. A packed slip leaves both absent.
+   */
+  deliveryLines: defineTable({
+    deliveryId: v.id("deliveries"),
+    salesOrderLineId: v.id("salesOrderLines"),
+    productId: v.id("products"),
+    variantId: v.optional(v.id("variants")),
+    description: v.string(),
+    sku: v.string(),
+    qty: v.number(),
+    unitCost: v.optional(v.number()),
+    movementId: v.optional(v.id("stockMovements")),
+    sort: v.number(),
+  })
+    .index("by_delivery", ["deliveryId"])
+    .index("by_order_line", ["salesOrderLineId"]),
+
+  /**
+   * A sales invoice (PH2-16). Generated from shipped quantity on an
+   * order or one delivery. The number comes from the `invoice`
+   * sequence (`INV-`). Prices and tax rates are copied from the order
+   * line and the amounts are worked out for the quantity on this
+   * invoice. Draft can be posted or voided. Posting writes the
+   * `salesInvoice` journal intent. Paid is a status until a payment
+   * is applied in Phase 3; it does not reduce the balance by itself.
+   * A posted invoice is corrected by a credit note (PH2-17), not by
+   * voiding it.
+   */
+  salesInvoices: defineTable({
+    docNumber: v.string(),
+    customerId: v.id("customers"),
+    salesOrderId: v.id("salesOrders"),
+    deliveryId: v.optional(v.id("deliveries")),
+    status: v.union(v.literal("draft"), v.literal("posted"), v.literal("paid"), v.literal("void")),
+    currency: v.string(),
+    decimalPlaces: v.number(),
+    paymentTermsDays: v.number(),
+    /** UTC midnight. */
+    invoiceDate: v.number(),
+    /** UTC midnight. The terms counted from `invoiceDate`. */
+    dueDate: v.number(),
+    billTo: v.optional(documentAddress),
+    shipTo: v.optional(documentAddress),
+    postedAt: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_number", ["docNumber"])
+    .index("by_customer", ["customerId"])
+    .index("by_order", ["salesOrderId"])
+    .index("by_delivery", ["deliveryId"])
+    .index("by_status", ["status", "createdAt"]),
+
+  /**
+   * One invoiced product. `unitPrice` is the order line's charged
+   * price. Tax amounts are for `qty`, not the whole order line.
+   */
+  salesInvoiceLines: defineTable({
+    invoiceId: v.id("salesInvoices"),
+    salesOrderLineId: v.id("salesOrderLines"),
+    deliveryLineId: v.optional(v.id("deliveryLines")),
+    productId: v.id("products"),
+    variantId: v.optional(v.id("variants")),
+    description: v.string(),
+    sku: v.string(),
+    qty: v.number(),
+    unitPrice: v.number(),
+    discountPercent: v.number(),
+    taxCategory: v.union(
+      v.literal("standard"),
+      v.literal("reduced"),
+      v.literal("zero"),
+      v.literal("exempt"),
+    ),
+    taxRateId: v.optional(v.id("taxRates")),
+    rateBps: v.number(),
+    inclusive: v.boolean(),
+    net: v.number(),
+    tax: v.number(),
+    gross: v.number(),
+    sort: v.number(),
+    createdAt: v.number(),
+  })
+    .index("by_invoice", ["invoiceId"])
+    .index("by_order_line", ["salesOrderLineId"]),
+
+  /**
+   * A credit note (PH2-17). It reduces one posted or paid invoice.
+   * The number comes from the `creditNote` sequence (`CR-`). A return
+   * may put the goods back in the order's warehouse. An adjustment
+   * never does. Posting writes the `creditNote` journal intent. A
+   * draft can be voided. A posted note stays. `salesReturnId` is set
+   * when the note was the outcome of a return (PH2-18).
+   */
+  creditNotes: defineTable({
+    docNumber: v.string(),
+    invoiceId: v.id("salesInvoices"),
+    customerId: v.id("customers"),
+    salesOrderId: v.id("salesOrders"),
+    kind: v.union(v.literal("return"), v.literal("adjustment")),
+    /** A return may restock. An adjustment stores false. */
+    restock: v.boolean(),
+    status: v.union(v.literal("draft"), v.literal("posted"), v.literal("void")),
+    currency: v.string(),
+    decimalPlaces: v.number(),
+    /** UTC midnight. */
+    creditDate: v.number(),
+    reason: v.string(),
+    /** Set when a return puts goods back. */
+    warehouseId: v.optional(v.id("warehouses")),
+    /** The return that opened this note, when it was not drafted on its own. */
+    salesReturnId: v.optional(v.id("salesReturns")),
+    postedAt: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_number", ["docNumber"])
+    .index("by_invoice", ["invoiceId"])
+    .index("by_customer", ["customerId"])
+    .index("by_status", ["status", "createdAt"]),
+
+  /**
+   * One credited product. Prices and tax are the invoice line's, for
+   * this quantity. `movementId` is the receipt when the line was
+   * restocked.
+   */
+  creditNoteLines: defineTable({
+    creditNoteId: v.id("creditNotes"),
+    invoiceLineId: v.id("salesInvoiceLines"),
+    salesOrderLineId: v.id("salesOrderLines"),
+    productId: v.id("products"),
+    variantId: v.optional(v.id("variants")),
+    description: v.string(),
+    sku: v.string(),
+    qty: v.number(),
+    unitPrice: v.number(),
+    discountPercent: v.number(),
+    taxCategory: v.union(
+      v.literal("standard"),
+      v.literal("reduced"),
+      v.literal("zero"),
+      v.literal("exempt"),
+    ),
+    taxRateId: v.optional(v.id("taxRates")),
+    rateBps: v.number(),
+    inclusive: v.boolean(),
+    net: v.number(),
+    tax: v.number(),
+    gross: v.number(),
+    movementId: v.optional(v.id("stockMovements")),
+    sort: v.number(),
+    createdAt: v.number(),
+  }).index("by_credit", ["creditNoteId"]),
+
+  /**
+   * A sales return (PH2-18). The number comes from the `rma` sequence
+   * (`RMA-`). The request names lines and quantities from a posted
+   * invoice or from an order that has shipped. Receiving inspects
+   * each line. The outcome is one posted credit note or one draft
+   * exchange order. Cancel is only while the return is still a request.
+   */
+  salesReturns: defineTable({
+    docNumber: v.string(),
+    customerId: v.id("customers"),
+    salesOrderId: v.id("salesOrders"),
+    /** Set when the request is opened from an invoice, or the order's lines sit on one. */
+    invoiceId: v.optional(v.id("salesInvoices")),
+    status: v.union(
+      v.literal("requested"),
+      v.literal("received"),
+      v.literal("credited"),
+      v.literal("exchanged"),
+      v.literal("cancelled"),
+    ),
+    reason: v.string(),
+    currency: v.string(),
+    decimalPlaces: v.number(),
+    /** The order's warehouse, copied when the goods are received. */
+    warehouseId: v.optional(v.id("warehouses")),
+    creditNoteId: v.optional(v.id("creditNotes")),
+    exchangeOrderId: v.optional(v.id("salesOrders")),
+    receivedAt: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_number", ["docNumber"])
+    .index("by_customer", ["customerId"])
+    .index("by_order", ["salesOrderId"])
+    .index("by_invoice", ["invoiceId"])
+    .index("by_status", ["status", "createdAt"]),
+
+  /**
+   * One product coming back. Prices are the source line's, for this
+   * quantity. Disposition and the ledger ids are absent until receive.
+   * A restock stores the receipt. A quarantine also stores the hold.
+   * A write-off stores the receipt and the write-off.
+   */
+  salesReturnLines: defineTable({
+    salesReturnId: v.id("salesReturns"),
+    salesOrderLineId: v.id("salesOrderLines"),
+    invoiceLineId: v.optional(v.id("salesInvoiceLines")),
+    productId: v.id("products"),
+    variantId: v.optional(v.id("variants")),
+    description: v.string(),
+    sku: v.string(),
+    qty: v.number(),
+    unitPrice: v.number(),
+    disposition: v.optional(
+      v.union(v.literal("restock"), v.literal("quarantine"), v.literal("writeOff")),
+    ),
+    movementId: v.optional(v.id("stockMovements")),
+    holdMovementId: v.optional(v.id("stockMovements")),
+    writeOffMovementId: v.optional(v.id("stockMovements")),
+    sort: v.number(),
+    createdAt: v.number(),
+  }).index("by_return", ["salesReturnId"]),
+
+  /**
+   * A posting Phase 3 has not consumed. PH2-14 opened the table for
+   * cost of goods. PH2-16 adds a sales invoice. PH2-17 adds a credit
+   * note. PH2-23 adds a vendor bill. PH2-26 adds a goods receipt, a
+   * debit note, and a stock adjustment. `status` stays pending until
+   * the posting engine. `amount` is the cost of goods, the invoice
+   * gross, the credit gross, the bill gross, the inventory value that
+   * entered, the debit-note cost, or the signed adjustment. `net` and
+   * `tax` are set on a sales invoice, a credit note, and a vendor bill.
+   * A missing unit cost is an amount of zero so the event is still on
+   * the backlog. A rejection-only receipt writes nothing.
+   */
+  journalIntents: defineTable({
+    type: v.union(
+      v.literal("cogs"),
+      v.literal("salesInvoice"),
+      v.literal("creditNote"),
+      v.literal("vendorBill"),
+      v.literal("goodsReceipt"),
+      v.literal("debitNote"),
+      v.literal("stockAdjustment"),
+    ),
+    sourceType: v.union(
+      v.literal("delivery"),
+      v.literal("salesInvoice"),
+      v.literal("creditNote"),
+      v.literal("vendorBill"),
+      v.literal("goodsReceipt"),
+      v.literal("purchaseReturn"),
+      v.literal("stockAdjustment"),
+    ),
+    sourceId: v.union(
+      v.id("deliveries"),
+      v.id("salesInvoices"),
+      v.id("creditNotes"),
+      v.id("vendorBills"),
+      v.id("goodsReceipts"),
+      v.id("purchaseReturns"),
+      v.id("stockMovements"),
+    ),
+    status: v.literal("pending"),
+    /** `YYYY-MM` of the ship, invoice, credit, bill, receipt, return, or adjustment. */
+    period: v.string(),
+    currency: v.string(),
+    amount: v.number(),
+    net: v.optional(v.number()),
+    tax: v.optional(v.number()),
+    lines: v.array(
+      v.object({
+        productId: v.id("products"),
+        variantId: v.optional(v.id("variants")),
+        description: v.string(),
+        qty: v.number(),
+        unitCost: v.optional(v.number()),
+        unitPrice: v.optional(v.number()),
+        net: v.optional(v.number()),
+        tax: v.optional(v.number()),
+        amount: v.number(),
+      }),
+    ),
+    createdAt: v.number(),
+  })
+    .index("by_source", ["sourceType", "sourceId"])
+    .index("by_type", ["type", "createdAt"]),
+
   lowStockNotices: defineTable({
     productId: v.id("products"),
     variantId: v.optional(v.id("variants")),

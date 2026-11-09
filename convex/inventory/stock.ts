@@ -15,6 +15,7 @@ import {
   type StockMovementType,
 } from "../../lib/stock";
 import { auditedMutation } from "../_lib/audit";
+import { recordStockAdjustmentIntent } from "../finance/journalIntents";
 import { requirePermission } from "../_lib/permissions";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
@@ -816,6 +817,7 @@ export const adjust = auditedMutation({
     const id = await adjustStock(ctx, { ...args, actorId });
     const row = await ctx.db.get(id);
     if (row === null) throw new ConvexError("Adjustment was not recorded.");
+    await recordStockAdjustmentIntent(ctx, id);
     return { result: id, audit: { entityId: id, after: snapshot(row) } };
   },
 });

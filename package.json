@@ -31,6 +31,7 @@
     "convex": "^1.46.0",
     "input-otp": "^1.5.0",
     "next": "16.3.8",
+    "pdf-lib": "^1.17.1",
     "react": "19.2.8",
     "react-aria": "^3.52.1",
     "react-aria-components": "^1.21.1",

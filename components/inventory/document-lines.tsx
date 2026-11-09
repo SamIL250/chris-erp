@@ -30,13 +30,14 @@ export function DocumentLines({
   showCost = false,
 }: {
   lines: DraftLine[];
-  products: { _id: string; name: string; sku: string }[] | undefined;
+  products: { _id: string; name: string; sku: string; coverUrl?: string | null }[] | undefined;
   onChange: (lines: DraftLine[]) => void;
   showCost?: boolean;
 }) {
   const items = (products ?? []).map((product) => ({
     id: product._id,
     label: `${product.name} · ${product.sku}`,
+    avatarUrl: product.coverUrl ?? undefined,
   }));
 
   const update = (key: string, patch: Partial<DraftLine>) => {
@@ -70,7 +71,7 @@ export function DocumentLines({
             }
           >
             {(item) => (
-              <Select.Item id={item.id} key={item.id}>
+              <Select.Item id={item.id} key={item.id} avatarUrl={item.avatarUrl}>
                 {item.label}
               </Select.Item>
             )}

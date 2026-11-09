@@ -5,11 +5,13 @@ import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { Badge } from "@/components/base/badges/badges";
 import { Select } from "@/components/base/select/select";
+import { ProductIdentity } from "@/components/catalog/product-cover";
 import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
 import { PageHeader } from "@/components/ui/page-header";
 import { Skeleton } from "@/components/ui/skeleton";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
+import { useProductCovers } from "@/hooks/use-product-covers";
 import { formatQty, formatValue } from "@/lib/inventory-display";
 
 type Position = {
@@ -29,6 +31,8 @@ type Position = {
   value?: number;
 };
 
+type StockRow = Position & { coverSrc: string | null };
+
 /**
  * Stock on hand (PH1-23). Warehouse, category, and low stock are
  * filtered on the server. Low stock means available is at or below
@@ -47,18 +51,18 @@ export default function StockPage() {
     ...(categoryId === "" ? {} : { categoryId: categoryId as Id<"categories"> }),
     ...(lowStock === "yes" ? { lowStock: true } : {}),
   });
+  const covers = useProductCovers((rows ?? []).map((row) => row.productId));
+  const tableRows = useMemo(
+    () => (rows ?? []).map((row) => ({ ...row, coverSrc: covers.get(row.productId) ?? null })),
+    [rows, covers],
+  );
 
-  const columns = useMemo<DataTableColumn<Position>[]>(
+  const columns = useMemo<DataTableColumn<StockRow>[]>(
     () => [
       {
         id: "product",
         header: "Product",
-        cell: (row) => (
-          <div className="min-w-0">
-            <span className="text-primary block truncate text-sm font-medium">{row.name}</span>
-            <span className="text-tertiary font-mono text-xs">{row.sku}</span>
-          </div>
-        ),
+        cell: (row) => <ProductIdentity name={row.name} meta={row.sku} src={row.coverSrc} />,
       },
       {
         id: "warehouse",
@@ -194,7 +198,7 @@ export default function StockPage() {
             </div>
           }
           columns={columns}
-          rows={rows}
+          rows={tableRows}
           rowId={(row) => `${row.productId}:${row.variantId ?? ""}:${row.warehouseId}`}
           onRowClick={(row) => {
             const params = new URLSearchParams({ warehouse: row.warehouseId });

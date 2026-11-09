@@ -36,6 +36,8 @@ import { toUserMessage } from "@/lib/errors";
  */
 
 type ProductRow = Doc<"products">;
+/** Product plus the resolved cover. A new object is required once the URL arrives — see `tableRows`. */
+type ProductTableRow = ProductRow & { coverSrc: string | null };
 type StatusKey = "draft" | "active" | "archived";
 type SortKey = "name" | "sku" | "brand" | "status" | "updatedAt";
 type ListSort = { key: SortKey; direction: "asc" | "desc" };
@@ -119,8 +121,20 @@ export default function ProductsPage() {
     return ids;
   }, [result]);
   const coverUrls = useQuery(api.files.urls, coverIds.length > 0 ? { fileIds: coverIds } : "skip");
-  const coverUrl = (fileId: Id<"files"> | undefined) =>
-    fileId === undefined ? null : (coverUrls?.find((row) => row.fileId === fileId)?.url ?? null);
+  // React Aria caches a row element by the item object's identity and will not
+  // rerun the cell when only a closed-over URL arrives later. Copying the row
+  // once `coverSrc` resolves gives the table a new item, so the thumbnail paints.
+  const tableRows = useMemo((): ProductTableRow[] => {
+    const list = result?.rows ?? [];
+    return list.map((row) => {
+      const fileId = row.images?.[0]?.fileId;
+      const coverSrc =
+        fileId === undefined
+          ? null
+          : (coverUrls?.find((entry) => entry.fileId === fileId)?.url ?? null);
+      return { ...row, coverSrc };
+    });
+  }, [result, coverUrls]);
 
   const categoryName = useMemo(() => {
     const map = new Map<string, string>();
@@ -173,21 +187,20 @@ export default function ProductsPage() {
     }
   };
 
-  const columns: DataTableColumn<ProductRow>[] = [
+  const columns: DataTableColumn<ProductTableRow>[] = [
     {
       id: "name",
       header: "Product",
       sortable: true,
       cell: (row) => {
         const imageCount = row.images?.length ?? 0;
-        const url = coverUrl(row.images?.[0]?.fileId);
         return (
           <div className="flex min-w-0 items-center gap-3">
             <div className="bg-secondary ring-secondary relative size-10 shrink-0 overflow-hidden rounded-lg ring-1">
-              {url ? (
+              {row.coverSrc ? (
                 // Cover delivery URL. The product name next to it is the accessible name.
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={url} alt="" className="size-full object-cover" />
+                <img src={row.coverSrc} alt="" className="size-full object-cover" />
               ) : (
                 <div className="flex size-full items-center justify-center">
                   <Image01 className="text-fg-tertiary size-4" aria-hidden="true" />
@@ -432,7 +445,7 @@ export default function ProductsPage() {
       <DataTable
         title="All products"
         columns={columns}
-        rows={result?.rows ?? []}
+        rows={tableRows}
         rowId={(row) => row._id}
         toolbar={filterBar}
         sort={tableSort}
